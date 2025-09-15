@@ -8,7 +8,7 @@ Command-line function to anonymize SQL queries.
 - Builds reference dictionary <i>(tables, columns, aliases)</i>
 - Replaces values
 - Validates replaced values
-- Renders output
+- Renders output w/ reference mapping
 
 ---
 
