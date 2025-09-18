@@ -5,6 +5,12 @@ def normalize_casing(text: str) -> str:
         return match.group(0)
 
     # Regex to match text outside quotes
+    # Explanation of the regex:
+    #   (?<!\\)"(?:\\.|[^"\\])*"   : Matches double-quoted strings, ignoring escaped quotes (not preceded by a backslash)
+    #   |                         : OR
+    #   '.*?'                     : Matches single-quoted strings (non-greedy)
+    #   |                         : OR
+    #   ([^'"]+)                  : Matches sequences of characters that are not single or double quotes (captures unquoted text)
     pattern = r'(?<!\\)"(?:\\.|[^"\\])*"|\'.*?\'|([^\'"]+)'
     return re.sub(pattern, lambda m: ignore_within_quotes(m) if m.group(0).startswith(("'", '"')) else m.group(0).lower(), text)
 
