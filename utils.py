@@ -158,7 +158,7 @@ def tokenize_sql(query: str) -> List[Token]:
     return tokens
 
 # Query Tokenizer #2
-def query_tokenizer(text: str) -> list[str]:
+def query_tokenizer(text: str) -> str:
     symbols = {
         "*", ",", "(", ")", "[", "]", ";", "=", "<=", "<", ">=", ">", "!",
         "+", "-", "/", "%", "^", "&", "|", "~",
