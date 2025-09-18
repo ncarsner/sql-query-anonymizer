@@ -17,6 +17,54 @@ class Token:
     type: TokenType
     value: str
 
+KEYWORDS = { # fmt: off
+    "SELECT", "INSERT", "UPDATE", "DELETE", "DISTINCT", "UNIQUE", "AS", "FROM",
+    "JOIN", "INNER JOIN", "OUTER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "FULL OUTER JOIN", "CROSS JOIN",
+    "ON", "WHERE", "LIKE", "AND", "OR", "IN", "NOT", "BETWEEN", "IS", "NULL",
+
+    "CASE", "WHEN", "THEN", "ELSE", "END", "UNION", "ALL",
+
+    "GROUP BY", "ORDER BY", "IF", "EXISTS", "ELSEIF", "WITH", "HAVING",
+    "LIMIT", "OFFSET",
+    "CAST", "COUNT", "SUM", "AVG", "MIN", "MAX", "TRUE", "FALSE", "NULLIF", "COALESCE",
+    "ROUND", "LENGTH", "LEN", "SUBSTRING", "SUBSTR", "TRIM", "UPPER", "LOWER",
+
+    "CREATE", "ALTER", "DROP", "INDEX", "VIEW", "TRIGGER", "TABLE",
+    "PRIMARY KEY", "FOREIGN KEY", "UNIQUE KEY", "CHECK",
+    "DEFAULT", "REFERENCES", "EXCEPT", "INTERSECT", "RECURSIVE",
+    
+    "INTO", "VALUES",
+
+    "GRANT", "REVOKE",
+    "COMMIT", "ROLLBACK", "SAVEPOINT", "TRANSACTION", "LOCK",
+    "BEGIN", "END", "DECLARE", "CURSOR", "FETCH", "OPEN", "CLOSE",
+
+    # "TABLESPACE",
+    # "ANALYZE",
+    # "EXPLAIN",
+    # "VACUUM",
+    "SET",
+    "SHOW",
+    "DESCRIBE",
+    "USE",
+    "RETURNS",
+    # "RETURNING",
+
+    "DATABASE", "SCHEMA", "FUNCTION", "PROCEDURE",
+    "TRUNCATE", "REPLACE", "MERGE", "UPSERT",
+    "ASSERT", "RAISE", "THROW",
+
+    "LOOP", "EXIT", "CONTINUE", "FOR", "WHILE", "DO",
+
+    # "LANGUAGE",
+    # "PLPGSQL",
+    # "PLSQL",
+    # "PLV8",
+    # "PLPYTHON",
+    # "PLPERLU",
+    # "PLTCL",
+    # "PLJAVA",
+} # fmt: on
 
 
 def normalize_casing(text: str) -> str:
@@ -24,7 +72,14 @@ def normalize_casing(text: str) -> str:
         return match.group(0)
 
     # Regex to match text outside quotes
-    pattern = r'(?<!\\)"(?:\\.|[^"\\])*"|\'.*?\'|([^\'"]+)'
+    pattern = r"""
+        (?<!\\)            # Negative lookbehind to ensure no backslash precedes
+        "(?:\\.|[^"\\])*"  # Match double-quoted strings, allowing escaped quotes
+        |                  # OR
+        '(?:\\.|[^'\\])*'  # Match single-quoted strings, allowing escaped quotes
+        |                  # OR
+        ([^'"]+)           # Match any text outside quotes
+    """
     return re.sub(
         pattern,
         lambda m: (
@@ -33,6 +88,7 @@ def normalize_casing(text: str) -> str:
             else m.group(0).lower()
         ),
         text,
+        flags=re.VERBOSE,  # Enable verbose mode for better readability
     )
 
 
@@ -45,65 +101,39 @@ def collapse_extra_spaces(text: str) -> str:
 
 
 def normalize_keyword_casing(text: str) -> str:
-    keywords = { # fmt: off
-        "SELECT", "INSERT", "UPDATE", "DELETE", "DISTINCT", "UNIQUE", "AS", "FROM",
-        "JOIN", "INNER JOIN", "OUTER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "FULL OUTER JOIN", "CROSS JOIN",
-        "ON", "WHERE", "LIKE", "AND", "OR", "IN", "NOT", "BETWEEN", "IS", "NULL",
-
-        "CASE", "WHEN", "THEN", "ELSE", "END", "UNION", "ALL",
-
-        "GROUP BY", "ORDER BY", "IF", "EXISTS", "ELSEIF", "WITH", "HAVING",
-        "LIMIT", "OFFSET",
-        "CAST", "COUNT", "SUM", "AVG", "MIN", "MAX", "TRUE", "FALSE", "NULLIF", "COALESCE",
-        "ROUND", "LENGTH", "LEN", "SUBSTRING", "SUBSTR", "TRIM", "UPPER", "LOWER",
-
-        "CREATE", "ALTER", "DROP", "INDEX", "VIEW", "TRIGGER", "TABLE",
-        "PRIMARY KEY", "FOREIGN KEY", "UNIQUE KEY", "CHECK",
-        "DEFAULT", "REFERENCES", "EXCEPT", "INTERSECT", "RECURSIVE",
-        
-        "INTO", "VALUES",
-
-        "GRANT", "REVOKE",
-        "COMMIT", "ROLLBACK", "SAVEPOINT", "TRANSACTION", "LOCK",
-        "BEGIN", "END", "DECLARE", "CURSOR", "FETCH", "OPEN", "CLOSE",
-
-        # "TABLESPACE",
-        # "ANALYZE",
-        # "EXPLAIN",
-        # "VACUUM",
-        "SET",
-        "SHOW",
-        "DESCRIBE",
-        "USE",
-        "RETURNS",
-        # "RETURNING",
-
-        "DATABASE", "SCHEMA", "FUNCTION", "PROCEDURE",
-        "TRUNCATE", "REPLACE", "MERGE", "UPSERT",
-        "ASSERT", "RAISE", "THROW",
-
-        "LOOP", "EXIT", "CONTINUE", "FOR", "WHILE", "DO",
-
-        # "LANGUAGE",
-        # "PLPGSQL",
-        # "PLSQL",
-        # "PLV8",
-        # "PLPYTHON",
-        # "PLPERLU",
-        # "PLTCL",
-        # "PLJAVA",
-    } # fmt: on
     return " ".join(
-        word.upper() if word.upper() in keywords else word for word in text.split()
+        word.upper() if word.upper() in KEYWORDS else word for word in text.split()
     )
 
 # Query Tokenizer #1
 def tokenize_sql(query: str) -> List[Token]:
+    """
+    Tokenizes a given SQL query string into a list of tokens.
+    This function uses regular expressions to identify and classify different
+    components of an SQL query, such as keywords, identifiers, symbols, literals,
+    and whitespace. Each identified component is returned as a `Token` object.
+    Args:
+        query (str): The SQL query string to be tokenized.
+    Returns:
+        List[Token]: A list of `Token` objects representing the components of the query.
+                     Whitespace tokens are excluded from the result.
+    Token Types:
+        - TokenType.KEYWORD: SQL keywords (e.g., SELECT, FROM, WHERE).
+        - TokenType.IDENTIFIER: Identifiers such as table or column names.
+        - TokenType.SYMBOL: Symbols like parentheses, commas, and operators.
+        - TokenType.LITERAL: String or numeric literals.
+        - TokenType.WHITESPACE: Whitespace characters (excluded from the result).
+        - TokenType.UNKNOWN: Any unrecognized characters.
+    Notes:
+        - The function assumes that the `TokenType` enumeration and `Token` class
+          are defined elsewhere in the code.
+        - The `KEYWORDS` variable should contain a regex pattern for SQL keywords.
+    """
     tokens = []
     
     # Define regex patterns for each TokenType
     token_specification = [
-        (TokenType.KEYWORD, r'\b(SELECT|FROM|WHERE|UNION|AND|OR|GROUP|BY|ORDER|LIMIT)\b'),  # short list
+        (TokenType.KEYWORD, KEYWORDS),
         (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*'),
         (TokenType.SYMBOL, r'[(),=<>]'),
         (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'),  # String or numeric
@@ -129,12 +159,11 @@ def tokenize_sql(query: str) -> List[Token]:
 # Query Tokenizer #2
 def query_tokenizer(text: str) -> list[str]:
     symbols = {
-        "*",
-        ",", "(", ")", ";", "=", "<=", "<", ">=", ">", "!", "+", "-",
-        "/", "%", "^", "&", "|", "~", "[", "]"
+        "*", ",", "(", ")", "[", "]", ";", "=", "<=", "<", ">=", ">", "!",
+        "+", "-", "/", "%", "^", "&", "|", "~",
     }
     token_pattern = rf"([{re.escape(''.join(symbols))}])"
-    return [token.strip() for token in re.split(token_pattern, text) if token and token.strip()]
+    return " ".join([token.strip() for token in re.split(token_pattern, text) if token and token.strip()])
 
 
 def preprocess_text(text: str) -> str:
@@ -144,6 +173,7 @@ def preprocess_text(text: str) -> str:
     text = normalize_keyword_casing(text)
     # text = query_tokenizer(text)
     text = tokenize_sql(text)
+    text = " ".join(token.value for token in text)
     # text = " ".join(text)
     return text
 
