@@ -158,7 +158,7 @@ def tokenize_sql(query: str) -> List[Token]:
             if match.lastgroup == token_type.name:
                 value = match.group(token_type.name)
                 if token_type != TokenType.WHITESPACE:  # Skip whitespace tokens if not needed
-                    tokens.append(Token(type=token_type, value=value, space=token_type == TokenType.WHITESPACE))
+                    tokens.append(Token(type=token_type, value=value))
                 break
     
     return tokens
