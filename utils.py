@@ -136,7 +136,7 @@ def tokenize_sql(query: str) -> List[Token]:
     
     # Define regex patterns for each TokenType
     token_specification = [
-        (TokenType.KEYWORD, "|".join(KEYWORDS)), # SQL keywords
+        (TokenType.KEYWORD, "|".join(re.escape(kw) for kw in KEYWORDS)), # SQL keywords
         (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)'), # table/column names
         (TokenType.SYMBOL, "|".join(SYMBOLS)), # operators and punctuation
         (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'), # string and numeric literals
