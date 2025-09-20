@@ -1,17 +1,95 @@
+from enum import Enum, auto
+from dataclasses import dataclass
 import re
+from typing import List
+
+
+class TokenType(Enum):
+    KEYWORD = auto()
+    IDENTIFIER = auto()
+    SYMBOL = auto()
+    LITERAL = auto()
+    WHITESPACE = auto()
+    UNKNOWN = auto()
+
+@dataclass
+class Token:
+    type: TokenType
+    value: str
+
+KEYWORDS = { # fmt: off
+    "SELECT", "INSERT", "UPDATE", "DELETE", "DISTINCT", "UNIQUE", "AS", "FROM",
+    "JOIN", "INNER JOIN", "OUTER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "FULL OUTER JOIN", "CROSS JOIN",
+    "ON", "WHERE", "LIKE", "AND", "OR", "IN", "NOT", "BETWEEN", "IS", "NULL",
+
+    "CASE", "WHEN", "THEN", "ELSE", "END", "UNION", "ALL",
+
+    "GROUP BY", "ORDER BY", "IF", "EXISTS", "ELSEIF", "WITH", "HAVING",
+    "LIMIT", "OFFSET",
+    "CAST", "COUNT", "SUM", "AVG", "MIN", "MAX", "TRUE", "FALSE", "NULLIF", "COALESCE",
+    "ROUND", "LENGTH", "LEN", "SUBSTRING", "SUBSTR", "TRIM", "UPPER", "LOWER",
+
+    "CREATE", "ALTER", "DROP", "INDEX", "VIEW", "TRIGGER", "TABLE",
+    "PRIMARY KEY", "FOREIGN KEY", "UNIQUE KEY", "CHECK",
+    "DEFAULT", "REFERENCES", "EXCEPT", "INTERSECT", "RECURSIVE",
+    
+    "INTO", "VALUES",
+
+    "GRANT", "REVOKE",
+    "COMMIT", "ROLLBACK", "SAVEPOINT", "TRANSACTION", "LOCK",
+    "BEGIN", "END", "DECLARE", "CURSOR", "FETCH", "OPEN", "CLOSE",
+
+    # "TABLESPACE",
+    # "ANALYZE",
+    # "EXPLAIN",
+    # "VACUUM",
+    "SET",
+    "SHOW",
+    "DESCRIBE",
+    "USE",
+    "RETURNS",
+    # "RETURNING",
+
+    "DATABASE", "SCHEMA", "FUNCTION", "PROCEDURE",
+    "TRUNCATE", "REPLACE", "MERGE", "UPSERT",
+    "ASSERT", "RAISE", "THROW",
+
+    "LOOP", "EXIT", "CONTINUE", "FOR", "WHILE", "DO",
+
+    # "LANGUAGE",
+    # "PLPGSQL",
+    # "PLSQL",
+    # "PLV8",
+    # "PLPYTHON",
+    # "PLPERLU",
+    # "PLTCL",
+    # "PLJAVA",
+} # fmt: on
+
 
 def normalize_casing(text: str) -> str:
     def ignore_within_quotes(match):
         return match.group(0)
 
     # Regex to match text outside quotes
-    # Explanation of the regex:
-    #   (?<!\\)"(?:\\.|[^"\\])*"   : Matches double-quoted strings, ignoring escaped quotes (not preceded by a backslash)
-    #   |                         : OR
-    #   '.*?'                     : Matches single-quoted strings (non-greedy)
-    #   |                         : OR
-    #   ([^'"]+)                  : Matches sequences of characters that are not single or double quotes (captures unquoted text)
-    pattern = r'(?<!\\)"(?:\\.|[^"\\])*"|\'.*?\'|([^\'"]+)'
+    pattern = r"""
+        (?<!\\)            # Negative lookbehind to ensure no backslash precedes
+        "(?:\\.|[^"\\])*"  # Match double-quoted strings, allowing escaped quotes
+        |                  # OR
+        '(?:\\.|[^'\\])*'  # Match single-quoted strings, allowing escaped quotes
+        |                  # OR
+        ([^'"]+)           # Match any text outside quotes
+    """
+    return re.sub(
+        pattern,
+        lambda m: (
+            ignore_within_quotes(m)
+            if m.group(0).startswith(("'", '"'))
+            else m.group(0).lower()
+        ),
+        text,
+        flags=re.VERBOSE,  # Enable verbose mode for better readability
+    )
     return re.sub(pattern, lambda m: ignore_within_quotes(m) if m.group(0).startswith(("'", '"')) else m.group(0).lower(), text)
 
 
@@ -24,166 +102,89 @@ def collapse_extra_spaces(text: str) -> str:
 
 
 def normalize_keyword_casing(text: str) -> str:
-    keywords = {
-        "SELECT",
-        "INSERT",
-        "UPDATE",
-        "DELETE",
+    return " ".join(
+        word.upper() if word.upper() in KEYWORDS else word for word in text.split()
+    )
 
-        "DISTINCT",
-        "UNIQUE",
-        "AS",
-        "FROM",
-        "JOIN",
-        "INNER JOIN",
-        "LEFT JOIN",
-        "RIGHT JOIN",
-        "FULL JOIN",
-        "CROSS JOIN",
-        "ON",
-        "WHERE",
+# Query Tokenizer #1
+def tokenize_sql(query: str) -> List[Token]:
+    """
+    Tokenizes a given SQL query string into a list of tokens.
+    This function uses regular expressions to identify and classify different
+    components of an SQL query, such as keywords, identifiers, symbols, literals,
+    and whitespace. Each identified component is returned as a `Token` object.
+    Args:
+        query (str): The SQL query string to be tokenized.
+    Returns:
+        List[Token]: A list of `Token` objects representing the components of the query.
+                     Whitespace tokens are excluded from the result.
+    Token Types:
+        - TokenType.KEYWORD: SQL keywords (e.g., SELECT, FROM, WHERE).
+        - TokenType.IDENTIFIER: Identifiers such as table or column names.
+        - TokenType.SYMBOL: Symbols like parentheses, commas, and operators.
+        - TokenType.LITERAL: String or numeric literals.
+        - TokenType.WHITESPACE: Whitespace characters (excluded from the result).
+        - TokenType.UNKNOWN: Any unrecognized characters.
+    Notes:
+        - The function assumes that the `TokenType` enumeration and `Token` class
+          are defined elsewhere in the code.
+        - The `KEYWORDS` variable should contain a regex pattern for SQL keywords.
+    """
+    tokens = []
+    
+    # Define regex patterns for each TokenType
+    token_specification = [
+        (TokenType.KEYWORD, KEYWORDS),
+        (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*'),
+        (TokenType.SYMBOL, r'[(),=<>]'),
+        (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'),  # String or numeric
+        (TokenType.WHITESPACE, r'\s+'),
+        (TokenType.UNKNOWN, r'.'),
+    ]
+    
+    # Combine patterns into a single regex
+    token_regex = '|'.join(f'(?P<{tt.name}>{pattern})' for tt, pattern in token_specification)
+    regex = re.compile(token_regex, re.IGNORECASE)
+    
+    # Match tokens in the query
+    for match in regex.finditer(query):
+        for token_type in TokenType:
+            if match.lastgroup == token_type.name:
+                value = match.group(token_type.name)
+                if token_type != TokenType.WHITESPACE:  # Skip whitespace tokens if not needed
+                    tokens.append(Token(type=token_type, value=value))
+                break
+    
+    return tokens
 
-        "AND",
-        "OR",
-        "IN",
-        "NOT",
-        "IS",
-        "NULL",
-        "LIKE",
-
-        "CASE",
-        "WHEN",
-        "THEN",
-        "ELSE",
-        "END",
-
-        "UNION",
-        "ALL",
-        "EXISTS",
-        "BETWEEN",
-
-        "GROUP BY",
-        "ORDER BY",
-
-        "IF",
-        "ELSEIF",
-
-        "WITH",
-        "HAVING",
-        "LIMIT",
-        "OFFSET",
-
-        "CAST",
-        "COUNT",
-        "SUM",
-        "AVG",
-        "MIN",
-        "MAX",
-        "TRUE",
-        "FALSE",
-        "NULLIF",
-        "COALESCE",
-        "ROUND",
-        "LENGTH",
-        "SUBSTRING",
-        "TRIM",
-        "UPPER",
-        "LOWER",
-
-        "CREATE",
-        "ALTER",
-        "DROP",
-        "INDEX",
-        "VIEW",
-        "TRIGGER",
-        "TABLE",
-
-        "PRIMARY KEY",
-        "FOREIGN KEY",
-        "REFERENCES",
-
-        "EXCEPT",
-        "INTERSECT",
-
-        "RECURSIVE",
-        "INTO",
-        "VALUES",
-        # "RETURNING",
-
-        "GRANT",
-        "REVOKE",
-
-        "COMMIT",
-        "ROLLBACK",
-        "SAVEPOINT",
-        "TRANSACTION",
-        "LOCK",
-        # "ANALYZE",
-        # "EXPLAIN",
-        # "VACUUM",
-
-        "SET",
-        "SHOW",
-        "DESCRIBE",
-        "USE",
-        "DATABASE",
-        "SCHEMA",
-        "FUNCTION",
-        "PROCEDURE",
-        "DECLARE",
-        "CURSOR",
-        "FETCH",
-        "LOOP",
-
-        "EXIT",
-        "CONTINUE",
-        "FOR",
-        "WHILE",
-        "DO",
-        "BEGIN",
-        "END",
-
-        # "LANGUAGE",
-        # "PLPGSQL",
-        # "PLSQL",
-        # "PLV8",
-        # "PLPYTHON",
-        # "PLPERLU",
-        # "PLTCL",
-        # "PLJAVA",
+# Query Tokenizer #2
+def query_tokenizer(text: str) -> str:
+    symbols = {
+        "*", ",", "(", ")", "[", "]", ";", "=", "<=", "<", ">=", ">", "!",
+        "+", "-", "/", "%", "^", "&", "|", "~",
     }
-    return " ".join(word.upper() if word.upper() in keywords else word for word in text.split())
+    token_pattern = rf"([{re.escape(''.join(symbols))}])"
+    return " ".join([token.strip() for token in re.split(token_pattern, text) if token and token.strip()])
 
 
 def preprocess_text(text: str) -> str:
-    """
-    Preprocess the input text by normalizing casing and removing extra whitespace.
-
-    Args:
-        text (str): The input text to be preprocessed.
-
-    Returns:
-        str: The preprocessed text.
-    """
     text = normalize_casing(text)
     # text = remove_extra_whitespace(text)
     text = collapse_extra_spaces(text)
     text = normalize_keyword_casing(text)
+    # text = query_tokenizer(text)
+    text = tokenize_sql(text)
+    text = " ".join(token.value for token in text)
+    # text = " ".join(text)
     return text
 
 
-def test_preprocess_text():
-    assert preprocess_text("  Hello   World!  ") == "hello world!"
-    assert preprocess_text("This   is a   Test.") == "this is a test."
-    assert preprocess_text("  MULTIPLE    SPACES   ") == "multiple spaces"
-    assert preprocess_text("NoExtraSpaces") == "noextraspaces"
-    print("All tests passed!")
-
-
 if __name__ == "__main__":
-    sample_text = "  This   is a   Sample TEXT.  "
-    sample_text = "select   from   table   where  id =  10 and  name = ' John'  "
-    processed_text = preprocess_text(sample_text)
-    print(f"Original Text: '{sample_text}'")
-    print(f"Processed Text: '{processed_text}'")
-    # test_preprocess_text()
+    sample_text = [
+        "  This   is not     a   Sample as tXt.  ",
+        "select name, hire_date  from   table   where  id =  10 and  name = ' John'  ",
+    ]
+    # processed_text = [preprocess_text(text) for text in sample_text]
+    for sample in sample_text:
+        print(f"\nOriginal Text: '{sample}'")
+        print(f"Processed Text: '{preprocess_text(sample)}'")
