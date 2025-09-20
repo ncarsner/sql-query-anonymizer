@@ -98,6 +98,7 @@ def normalize_casing(text: str) -> str:
         text,
         flags=re.VERBOSE,
     )
+    return re.sub(pattern, lambda m: ignore_within_quotes(m) if m.group(0).startswith(("'", '"')) else m.group(0).lower(), text)
 
 
 def collapse_extra_spaces(text: str) -> str:
