@@ -100,10 +100,6 @@ def normalize_casing(text: str) -> str:
     )
 
 
-def remove_extra_whitespace(text: str) -> str:
-    return " ".join(text.split())
-
-
 def collapse_extra_spaces(text: str) -> str:
     # return re.sub(r"\s+", " ", text).strip()
     return " ".join(re.split(r"\s+", text.strip()))
@@ -127,12 +123,12 @@ def tokenize_sql(query: str) -> List[Token]:
         List[Token]: A list of `Token` objects representing the components of the query.
                      Whitespace tokens are excluded from the result.
     Token Types:
-        - TokenType.KEYWORD: SQL keywords (e.g., SELECT, FROM, WHERE).
+        - TokenType.KEYWORD: Whole word SQL keywords (e.g., SELECT, FROM, WHERE).
         - TokenType.IDENTIFIER: Identifiers such as table or column names.
-        - TokenType.SYMBOL: Symbols like parentheses, commas, and operators.
-        - TokenType.LITERAL: String or numeric literals.
+        - TokenType.LITERAL: String and numeric literals.
+        - TokenType.SYMBOL: Operators and punctuation outside of quotes.
         - TokenType.WHITESPACE: Whitespace characters (excluded from the result).
-        - TokenType.UNKNOWN: Any unrecognized characters.
+        - TokenType.UNKNOWN: Any other unrecognized characters.
     Notes:
         - The function assumes that the `TokenType` enumeration and `Token` class
           are defined elsewhere in the code.
@@ -142,12 +138,12 @@ def tokenize_sql(query: str) -> List[Token]:
     
     # Define regex patterns for each TokenType
     token_specification = [
-        (TokenType.KEYWORD, r'\b(?:' + "|".join(re.escape(kw) for kw in KEYWORDS) + r')\b'), # whole word keywords
-        (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?'), # table/column names
-        (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'), # string and numeric literals
-        (TokenType.SYMBOL, r'(?<!["\'])(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')(?!["\'])'), # operators and punctuation outside quotes
-        (TokenType.WHITESPACE, r'\s+'), # separators (spaces, tabs, newlines)
-        (TokenType.UNKNOWN, r'.'), # any other character
+        (TokenType.KEYWORD, r'\b(?:' + "|".join(re.escape(kw) for kw in KEYWORDS) + r')\b'),
+        (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?'),
+        (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'),
+        (TokenType.SYMBOL, r'(?<!["\'])(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')(?!["\'])'),
+        (TokenType.WHITESPACE, r'\s+'),
+        (TokenType.UNKNOWN, r'.'),
     ]
     
     # Combine patterns into a single regex
@@ -183,7 +179,6 @@ if __name__ == "__main__":
         "  select * from  table where   column in (1, 2, 3);",
         " SELECT p.department as dept  from personnel p where id = 10",
     ]
-    # processed_text = [preprocess_text(text) for text in sample_text]
     for sample in sample_text:
         print(f"\nOriginal Text: '{sample}'")
         print(f"Processed Text: '{preprocess_text(sample)}'")
