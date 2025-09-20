@@ -16,6 +16,8 @@ class TokenType(Enum):
 class Token:
     type: TokenType
     value: str
+    space: bool = False
+
 
 KEYWORDS = { # fmt: off
     "SELECT", "INSERT", "UPDATE", "DELETE", "DISTINCT", "UNIQUE", "AS", "FROM",
@@ -66,6 +68,11 @@ KEYWORDS = { # fmt: off
     # "PLJAVA",
 } # fmt: on
 
+SYMBOLS = { # fmt: off
+    "*", ",", "(", ")", "[", "]", ";",
+    "=", "<=", "<", ">=", ">", "!", "%", "'",
+    "+", "-", "/", "^", "&", "|", "~",
+} # fmt: on
 
 def normalize_casing(text: str) -> str:
     def ignore_within_quotes(match):
@@ -134,12 +141,12 @@ def tokenize_sql(query: str) -> List[Token]:
     
     # Define regex patterns for each TokenType
     token_specification = [
-        (TokenType.KEYWORD, KEYWORDS),
-        (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*'),
-        (TokenType.SYMBOL, r'[(),=<>]'),
-        (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'),  # String or numeric
-        (TokenType.WHITESPACE, r'\s+'),
-        (TokenType.UNKNOWN, r'.'),
+        (TokenType.KEYWORD, "|".join(re.escape(kw) for kw in KEYWORDS)), # SQL keywords
+        (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)'), # table/column names
+        (TokenType.SYMBOL, "|".join(re.escape(sym) for sym in SYMBOLS)), # operators and punctuation
+        (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'), # string and numeric literals
+        (TokenType.WHITESPACE, r'\s+'), # separators (spaces, tabs, newlines)
+        (TokenType.UNKNOWN, r'.'), # any other character
     ]
     
     # Combine patterns into a single regex
@@ -152,37 +159,28 @@ def tokenize_sql(query: str) -> List[Token]:
             if match.lastgroup == token_type.name:
                 value = match.group(token_type.name)
                 if token_type != TokenType.WHITESPACE:  # Skip whitespace tokens if not needed
-                    tokens.append(Token(type=token_type, value=value))
+                    tokens.append(Token(type=token_type, value=value, space=False))
                 break
     
     return tokens
 
-# Query Tokenizer #2
-def query_tokenizer(text: str) -> str:
-    symbols = {
-        "*", ",", "(", ")", "[", "]", ";", "=", "<=", "<", ">=", ">", "!",
-        "+", "-", "/", "%", "^", "&", "|", "~",
-    }
-    token_pattern = rf"([{re.escape(''.join(symbols))}])"
-    return " ".join([token.strip() for token in re.split(token_pattern, text) if token and token.strip()])
 
 
 def preprocess_text(text: str) -> str:
     text = normalize_casing(text)
-    # text = remove_extra_whitespace(text)
     text = collapse_extra_spaces(text)
     text = normalize_keyword_casing(text)
-    # text = query_tokenizer(text)
-    text = tokenize_sql(text)
-    text = " ".join(token.value for token in text)
-    # text = " ".join(text)
+    tokens = tokenize_sql(text) # changes to List of Tokens
+    text = " ".join(token.value for token in tokens)
     return text
 
 
 if __name__ == "__main__":
     sample_text = [
         "  This   is not     a   Sample as tXt.  ",
-        "select name, hire_date  from   table   where  id =  10 and  name = ' John'  ",
+        " select name, hire_date  from   table   where  id =  10 and  name = ' John'  ",
+        "  select * from  table where   column in (1, 2, 3);",
+        " SELECT p.department as dept  from personnel p where id = 10",
     ]
     # processed_text = [preprocess_text(text) for text in sample_text]
     for sample in sample_text:
