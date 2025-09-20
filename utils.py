@@ -30,8 +30,9 @@ KEYWORDS = { # fmt: off
     "LIMIT", "OFFSET",
     "CAST", "COUNT", "SUM", "AVG", "MIN", "MAX", "TRUE", "FALSE", "NULLIF", "COALESCE",
     "ROUND", "LENGTH", "LEN", "SUBSTRING", "SUBSTR", "TRIM", "UPPER", "LOWER",
+    "GETDATE", "NOW", "TODAY", "DATEADD", "DATEDIFF", "DATEPART", "CONVERT",
 
-    "CREATE", "ALTER", "DROP", "INDEX", "VIEW", "TRIGGER", "TABLE",
+    "CREATE", "ALTER", "DROP", "INDEX", "VIEW", "TRIGGER", "TABLE", "COLUMN",
     "PRIMARY KEY", "FOREIGN KEY", "UNIQUE KEY", "CHECK",
     "DEFAULT", "REFERENCES", "EXCEPT", "INTERSECT", "RECURSIVE",
     
@@ -69,7 +70,7 @@ KEYWORDS = { # fmt: off
 } # fmt: on
 
 SYMBOLS = { # fmt: off
-    "*", ",", "(", ")", "[", "]", ";",
+    "*", ",", "(", ")", "[", "]", ";", "_",
     "=", "<=", "<", ">=", ">", "!", "%", "'",
     "+", "-", "/", "^", "&", "|", "~",
 } # fmt: on
@@ -95,9 +96,8 @@ def normalize_casing(text: str) -> str:
             else m.group(0).lower()
         ),
         text,
-        flags=re.VERBOSE,  # Enable verbose mode for better readability
+        flags=re.VERBOSE,
     )
-    return re.sub(pattern, lambda m: ignore_within_quotes(m) if m.group(0).startswith(("'", '"')) else m.group(0).lower(), text)
 
 
 def remove_extra_whitespace(text: str) -> str:
@@ -105,7 +105,8 @@ def remove_extra_whitespace(text: str) -> str:
 
 
 def collapse_extra_spaces(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    # return re.sub(r"\s+", " ", text).strip()
+    return " ".join(re.split(r"\s+", text.strip()))
 
 
 def normalize_keyword_casing(text: str) -> str:
@@ -113,7 +114,7 @@ def normalize_keyword_casing(text: str) -> str:
         word.upper() if word.upper() in KEYWORDS else word for word in text.split()
     )
 
-# Query Tokenizer #1
+
 def tokenize_sql(query: str) -> List[Token]:
     """
     Tokenizes a given SQL query string into a list of tokens.
@@ -141,10 +142,10 @@ def tokenize_sql(query: str) -> List[Token]:
     
     # Define regex patterns for each TokenType
     token_specification = [
-        (TokenType.KEYWORD, "|".join(re.escape(kw) for kw in KEYWORDS)), # SQL keywords
-        (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)'), # table/column names
-        (TokenType.SYMBOL, "|".join(re.escape(sym) for sym in SYMBOLS)), # operators and punctuation
+        (TokenType.KEYWORD, r'\b(?:' + "|".join(re.escape(kw) for kw in KEYWORDS) + r')\b'), # whole word keywords
+        (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?'), # table/column names
         (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'), # string and numeric literals
+        (TokenType.SYMBOL, r'(?<!["\'])(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')(?!["\'])'), # operators and punctuation outside quotes
         (TokenType.WHITESPACE, r'\s+'), # separators (spaces, tabs, newlines)
         (TokenType.UNKNOWN, r'.'), # any other character
     ]
@@ -177,7 +178,7 @@ def preprocess_text(text: str) -> str:
 
 if __name__ == "__main__":
     sample_text = [
-        "  This   is not     a   Sample as tXt.  ",
+        "  This   is not    a   Sample as tXt.  ",
         " select name, hire_date  from   table   where  id =  10 and  name = ' John'  ",
         "  select * from  table where   column in (1, 2, 3);",
         " SELECT p.department as dept  from personnel p where id = 10",
