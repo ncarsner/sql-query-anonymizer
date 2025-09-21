@@ -158,8 +158,8 @@ def tokenize_sql(query: str) -> List[Token]:
     
     # Define regex patterns for each TokenType
     token_specification = [
-        (TokenType.FUNCTION, r'\b(?:' + "|".join(re.escape(fn) for fn in escaped_functions) + r')\b'),
-        (TokenType.KEYWORD, r'\b(?:' + "|".join(re.escape(kw) for kw in escaped_keywords) + r')\b'),
+        (TokenType.FUNCTION, r'\b(?:' + "|".join(escaped_functions) + r')\b'),
+        (TokenType.KEYWORD, r'\b(?:' + "|".join(escaped_keywords) + r')\b'),
         (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?'),
         (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'),
         (TokenType.SYMBOL, r'(?<!["\'])(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')(?!["\'])'),
