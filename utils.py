@@ -115,27 +115,19 @@ def normalize_casing(text: str) -> str:
 
 
 def collapse_extra_spaces(text: str) -> str:
-    # return re.sub(r"\s+", " ", text).strip()
     return " ".join(re.split(r"\s+", text.strip()))
 
 
 def normalize_keyword_casing(text: str) -> str:
-    return " ".join(
-        word.upper() if word.upper() in (SQL_KEYWORDS | ALL_SQL_FUNCTIONS) else word for word in text.split()
-    )
+    sorted_keywords = sorted(SQL_KEYWORDS | ALL_SQL_FUNCTIONS, key=len, reverse=True)
+    pattern = r'\b(?:' + "|".join(map(re.escape, sorted_keywords)) + r')\b'
+    return re.sub(pattern, lambda m: m.group(0).upper(), text, flags=re.IGNORECASE)
 
 
 def tokenize_sql(query: str) -> List[Token]:
     """
-    Tokenizes a given SQL query string into a list of tokens.
-    This function uses regular expressions to identify and classify different
-    components of an SQL query, such as keywords, identifiers, symbols, literals,
+    Tokenizes a given SQL query string into a list of tokens, such as keywords, identifiers, symbols, literals,
     and whitespace. Each identified component is returned as a `Token` object.
-    Args:
-        query (str): The SQL query string to be tokenized.
-    Returns:
-        List[Token]: A list of `Token` objects representing the components of the query.
-                     Whitespace tokens are excluded from the result.
     Token Types:
         - TokenType.FUNCTION: SQL functions (e.g., COUNT, SUM, UPPER).
         - TokenType.KEYWORD: Whole word SQL keywords (e.g., SELECT, FROM, WHERE).
@@ -158,11 +150,11 @@ def tokenize_sql(query: str) -> List[Token]:
     
     # Define regex patterns for each TokenType
     token_specification = [
-        (TokenType.FUNCTION, r'\b(?:' + "|".join(re.escape(fn) for fn in escaped_functions) + r')\b'),
-        (TokenType.KEYWORD, r'\b(?:' + "|".join(re.escape(kw) for kw in escaped_keywords) + r')\b'),
+        (TokenType.FUNCTION, r'\b(?:' + "|".join(escaped_functions) + r')\b'),
+        (TokenType.KEYWORD, r'\b(?:' + "|".join(escaped_keywords) + r')\b'),
         (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?'),
         (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'),
-        (TokenType.SYMBOL, r'(?<!["\'])(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')(?!["\'])'),
+        (TokenType.SYMBOL, r'(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')'),
         (TokenType.WHITESPACE, r'\s+'),
         (TokenType.COMMENT, r'--.*?$|/\*.*?\*/'),  # Single line and multi-line comments
         (TokenType.UNKNOWN, r'.'),

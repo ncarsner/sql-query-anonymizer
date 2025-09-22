@@ -33,13 +33,14 @@ def test_remove_extra_spaces(input_text, expected_output):
 
 
 @pytest.mark.parametrize("input_text, expected_output", [
-    ("  Hello   World!  ", "Hello World!"),
-    ("  select * from cases c where 1 = 1 ;  ", "SELECT * FROM cases c WHERE 1 = 1 ;"),
+    ("  Hello   World!  ", "  Hello   World!  "),
+    ("  select * from cases c where 1 = 1 ;  ", "  SELECT * FROM cases c WHERE 1 = 1 ;  "),
     ("SELECT * FROM users WHERE id = 1;", "SELECT * FROM users WHERE id = 1;"),
     ("Insert INTO orders (id, amount) VALUES (1, 100);", "INSERT INTO orders (id, amount) VALUES (1, 100);"),
     ("UPDATE products SET price = 19.99 WHERE id = 2;", "UPDATE products SET price = 19.99 WHERE id = 2;"),
     ("delete FROM sessions WHERE user_id = 3;", "DELETE FROM sessions WHERE user_id = 3;"),
-    ("  select name, hire_date  from   employees   where  id =  10 and  name = ' John'  ", "SELECT name, hire_date FROM employees WHERE id = 10 AND name = ' John'"),
+    ("  select name, hire_date  from   employees   where  id =  10 and  name = ' John'  ", "  SELECT name, hire_date  FROM   employees   WHERE  id =  10 AND  name = ' John'  "),
+    (" select name, department from employees e inner join departments d on e.dept_id = d.id where e.hire_date > '2020-01-01' ", " SELECT name, department FROM employees e INNER JOIN departments d ON e.dept_id = d.id WHERE e.hire_date > '2020-01-01' "),
 ])
 def test_normalize_keyword_casing(input_text, expected_output):
     assert normalize_keyword_casing(input_text) == expected_output
@@ -71,13 +72,13 @@ def test_tokenize_sql(query):
 
 
 @pytest.mark.parametrize("input_text, expected_output", [
-    # ("  Hello   World!  ", "hello world!"),
-    # ("This   is a   Test.", "this IS a test."),
+    ("  Hello   World!  ", "hello world !"),
+    ("This   is a   Test.", "this IS a test ."),
     ("  MULTIPLE        SPACES   ", "multiple spaces"),
     ("NoExtraSpaces", "noextraspaces"),
     ("  select *    from customers  where 1 = 1;", "SELECT * FROM customers WHERE 1 = 1 ;"),
     (" select id  from  orders   where date_field  = ' 4/2/27 ';", "SELECT id FROM orders WHERE date_field = ' 4/2/27 ' ;"),
-    # (" select name  from  employees e where hire_date <= getdate() - 7;", "SELECT name FROM employees e WHERE hire_date <= GETDATE ( ) - 7 ;"),
+    (" select name  from  employees e where hire_date <= getdate() - 7;", "SELECT name FROM employees e WHERE hire_date <= GETDATE ( ) - 7 ;"),
 ])
 def test_preprocess_text(input_text, expected_output):
     assert preprocess_text(input_text) == expected_output
