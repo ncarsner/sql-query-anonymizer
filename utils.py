@@ -154,7 +154,7 @@ def tokenize_sql(query: str) -> List[Token]:
         (TokenType.KEYWORD, r'\b(?:' + "|".join(escaped_keywords) + r')\b'),
         (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?'),
         (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'),
-        (TokenType.SYMBOL, r'(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')'),
+        (TokenType.SYMBOL, r'(?<![\'"])(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')(?![\'"])'),
         (TokenType.WHITESPACE, r'\s+'),
         (TokenType.COMMENT, r'--.*?$|/\*.*?\*/'),  # Single line and multi-line comments
         (TokenType.UNKNOWN, r'.'),
