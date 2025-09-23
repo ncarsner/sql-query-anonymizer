@@ -1,6 +1,6 @@
-from enum import Enum, auto
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
+from enum import Enum, auto
 from typing import List
 
 
@@ -373,7 +373,7 @@ def tokenize_sql(query: str) -> List[Token]:
     # Combine patterns into a single regex
     regex = re.compile(
         "|".join(f"(?P<{tt.name}>{pattern})" for tt, pattern in token_specification),
-        re.IGNORECASE | re.DOTALL | re.MULTILINE,
+        re.IGNORECASE,
     )
 
     # Match tokens in the query
