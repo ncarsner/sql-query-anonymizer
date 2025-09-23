@@ -47,7 +47,7 @@ def test_normalize_keyword_casing(input_text, expected_output):
 
 
 @pytest.mark.parametrize("query", [
-    # "SELECT name, hire_date FROM employees e WHERE id = 10 AND name = 'John';",
+    "SELECT name, hire_date FROM employees e WHERE id = 10 AND name = 'John';",
     # "INSERT INTO orders (id, amount) VALUES (1, 100);",
 ])
 def test_tokenize_sql(query):
@@ -55,7 +55,8 @@ def test_tokenize_sql(query):
     token_values = [token.value for token in tokens]
     expected_values = [
         "SELECT", "name", ",", "hire_date", "FROM", "employees", "e",
-        "WHERE", "id", "=", "10", "AND", "name", "=", "'John'", ";"
+        "WHERE", "id", "=", "10", "AND", "name", "=", "'John'", ";",
+        # "INSERT", "INTO", "orders", "(", "id", ",", "amount", ")", "VALUES", "(", "1", ",", "100", ")", ";"
     ]
     assert token_values == expected_values
 

@@ -111,9 +111,7 @@ def tokenize_sql(query: str) -> List[Token]:
         for token_type in TokenType:
             if match.lastgroup == token_type.name:
                 value = match.group(token_type.name)
-                if (
-                    token_type != TokenType.WHITESPACE
-                ):  # Skip whitespace tokens if not needed
+                if (token_type != TokenType.WHITESPACE):
                     tokens.append(Token(type=token_type, value=value, space=False))
                 break
 
@@ -124,7 +122,7 @@ def preprocess_text(text: str) -> str:
     text = normalize_casing(text)
     text = collapse_extra_spaces(text)
     text = normalize_keyword_casing(text)
-    tokens = tokenize_sql(text)  # changes to List of Tokens
+    tokens = tokenize_sql(text)
     text = " ".join(token.value for token in tokens)
     return text
 
