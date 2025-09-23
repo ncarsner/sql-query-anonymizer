@@ -267,7 +267,4 @@ SQL_KEYWORDS = {  # fmt: off
 # replace SYMBOLS + its usage with an OP pattern
 MULTI_OPS = ["<=", ">=", "<>", "!=", "||", "::", "->>", "->"]
 SINGLE_OPS = list("(),.;=*+-/%^&|~<>")
-OP_PATTERN = r"(?:%s|[%s])" % (
-    "|".join(map(re.escape, MULTI_OPS)),
-    re.escape("".join(SINGLE_OPS)),
-)
+OP_PATTERN = rf"(?:{'|'.join(map(re.escape, MULTI_OPS))}|[{re.escape(''.join(SINGLE_OPS))}])"
