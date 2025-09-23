@@ -96,6 +96,7 @@ def tokenize_sql(query: str) -> List[Token]:
         (TokenType.SYMBOL, OP_PATTERN),
         (TokenType.WHITESPACE, r"\s+"),
         (TokenType.COMMENT, r"--.*?$|/\*.*?\*/"),  # Single line and multi-line comments
+#         (TokenType.COMMENT, r"--[^\n]*|/\*[\s\S]*?\*/"),  # Single line and multi-line comments (newline-agnostic)
         (TokenType.UNKNOWN, r"."),
     ]
 
