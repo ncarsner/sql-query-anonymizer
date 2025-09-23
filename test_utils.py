@@ -24,6 +24,7 @@ def test_normalize_casing(input_text, expected_output):
     ("This   is a   Test.", "This is a Test."),
     ("  MULTIPLE        SPACES   ", "MULTIPLE SPACES"),
     ("NoExtraSpaces", "NoExtraSpaces"),
+    ("Some  S p a c e s  Included ", "Some S p a c e s Included"),
     ("  select *    from customers  where 1 = 1;", "select * from customers where 1 = 1;"),
     (" select id  from  orders   where date_field  = ' 4/2/27 ';", "select id from orders where date_field = ' 4/2/27 ';"),
     (" select name  from  employees e where hire_date <= getdate() - 7;", "select name from employees e where hire_date <= getdate() - 7;"),
@@ -46,29 +47,29 @@ def test_normalize_keyword_casing(input_text, expected_output):
     assert normalize_keyword_casing(input_text) == expected_output
 
 
-@pytest.mark.parametrize("query", [
-    "SELECT name, hire_date FROM employees e WHERE id = 10 AND name = 'John';",
-    # "INSERT INTO orders (id, amount) VALUES (1, 100);",
+@pytest.mark.parametrize("input_text, expected_tokens, expected_types", [
+    (
+        "SELECT name, hire_date FROM employees e WHERE id = 10 AND name = 'John';",
+        ["SELECT", "name", ",", "hire_date", "FROM", "employees", "e", "WHERE", "id", "=", "10", "AND", "name", "=", "'John'", ";"],
+        [TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.IDENTIFIER, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL, TokenType.SYMBOL]
+    ),
+    (
+        "INSERT INTO orders (id, amount) VALUES (1, 100);",
+        ["INSERT", "INTO", "orders", "(", "id", ",", "amount", ")", "VALUES", "(", "1", ",", "100", ")", ";"],
+        [TokenType.KEYWORD, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.KEYWORD, TokenType.SYMBOL, TokenType.LITERAL, TokenType.SYMBOL, TokenType.LITERAL, TokenType.SYMBOL, TokenType.SYMBOL]
+    ),
+    (
+        "UPDATE products SET price = 19.99 WHERE id = 2;",
+        ["UPDATE", "products", "SET", "price", "=", "19.99", "WHERE", "id", "=", "2", ";"],
+        [TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL, TokenType.SYMBOL]
+    )
 ])
-def test_tokenize_sql(query):
-    tokens = tokenize_sql(query)
+def test_tokenize_sql(input_text, expected_tokens, expected_types):
+    tokens = tokenize_sql(input_text)
     token_values = [token.value for token in tokens]
-    expected_values = [
-        "SELECT", "name", ",", "hire_date", "FROM", "employees", "e",
-        "WHERE", "id", "=", "10", "AND", "name", "=", "'John'", ";",
-        # "INSERT", "INTO", "orders", "(", "id", ",", "amount", ")", "VALUES", "(", "1", ",", "100", ")", ";"
-    ]
-    assert token_values == expected_values
-
-    # Check token types
-    expected_types = [
-        TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.IDENTIFIER,
-        TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.IDENTIFIER,
-        TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL,
-        TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL,
-        TokenType.SYMBOL
-    ]
     token_types = [token.type for token in tokens]
+
+    assert token_values == expected_tokens
     assert token_types == expected_types
 
 
