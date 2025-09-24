@@ -61,10 +61,10 @@ class Anonymizer:
                 self.literal_map[identifier] = f"literal_{self.literal_count}"
             return self.literal_map[identifier]
         elif token_type == TokenType.ALIAS:
-            if identifier not in self.table_map:
-                self.table_count += 1
-                self.table_map[identifier] = f"alias_{self.table_count}"
-            return self.table_map[identifier]
+            if identifier not in self.alias_map:
+                self.alias_count += 1
+                self.alias_map[identifier] = f"alias_{self.alias_count}"
+            return self.alias_map[identifier]
         # return all other types as is
         elif token_type == TokenType.KEYWORD or token_type == TokenType.FUNCTION:
             return identifier
