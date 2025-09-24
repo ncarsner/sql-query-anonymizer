@@ -1,4 +1,4 @@
-from utils import TokenType, normalize_casing, collapse_extra_spaces, normalize_keyword_casing, tokenize_sql, preprocess_text
+from utils import TokenType, anonymize_identifiers, normalize_casing, collapse_extra_spaces, normalize_keyword_casing, tokenize_sql, preprocess_text
 import pytest
 
 @pytest.mark.parametrize("input_text, expected_output", [
@@ -62,7 +62,17 @@ def test_normalize_keyword_casing(input_text, expected_output):
         "UPDATE products SET price = 19.99 WHERE id = 2;",
         ["UPDATE", "products", "SET", "price", "=", "19.99", "WHERE", "id", "=", "2", ";"],
         [TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL, TokenType.SYMBOL]
-    )
+    ),
+    # (
+    #     """-- This is a single line comment
+    # SELECT name, hire_date FROM employees e
+    # /* multi-line
+    # comment */
+    # WHERE id = 10 AND name = 'John';
+    # """,
+    #     ["-- This is a single line comment", "SELECT", "name", ",", "hire_date", "FROM", "employees", "e", "/* multi-line comment */", "WHERE", "id", "=", "10", "AND", "name", "=", "'John'", ";"],
+    #     [TokenType.COMMENT, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.IDENTIFIER, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.COMMENT, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL, TokenType.KEYWORD, TokenType.IDENTIFIER, TokenType.SYMBOL, TokenType.LITERAL, TokenType.SYMBOL]
+    # )
 ])
 def test_tokenize_sql(input_text, expected_tokens, expected_types):
     tokens = tokenize_sql(input_text)
@@ -84,3 +94,12 @@ def test_tokenize_sql(input_text, expected_tokens, expected_types):
 ])
 def test_preprocess_text(input_text, expected_output):
     assert preprocess_text(input_text) == expected_output
+
+
+@pytest.mark.parametrize("input_text, expected_output", [
+    ("SELECT name, hire_date FROM employees e WHERE id = 10 AND name = 'John';", "SELECT identifier_1 , identifier_2 FROM identifier_3 identifier_4 WHERE identifier_5 = 10 AND identifier_1 = 'John' ;"),
+    ("INSERT INTO orders (id, amount) VALUES (1, 100);", "INSERT INTO identifier_1 ( identifier_2 , identifier_3 ) VALUES ( 1 , 100 ) ;"),
+    # ("SELECT p.name as Employee FROM personnel p WHERE p.id = 10;", "SELECT alias_1.identifier_1 AS identifier_3 FROM identifier_4 identifier_5 WHERE identifier_4.identifier_6 = 10 ;"),
+])
+def test_anonymize_identifiers(input_text, expected_output):
+    assert anonymize_identifiers(input_text) == expected_output

@@ -10,6 +10,7 @@ class TokenType(Enum):
     FUNCTION = auto()
     KEYWORD = auto()
     IDENTIFIER = auto()
+    ALIAS = auto()
     LITERAL = auto()
     SYMBOL = auto()
     WHITESPACE = auto()
@@ -67,6 +68,7 @@ def tokenize_sql(query: str) -> List[Token]:
         - TokenType.FUNCTION: SQL functions (e.g., COUNT, SUM, UPPER).
         - TokenType.KEYWORD: Whole word SQL keywords (e.g., SELECT, FROM, WHERE).
         - TokenType.IDENTIFIER: Identifiers such as table or column names.
+        - TokenType.ALIAS: Aliases for tables or columns.
         - TokenType.LITERAL: String and numeric literals.
         - TokenType.SYMBOL: Operators and punctuation outside of quotes.
         - TokenType.WHITESPACE: Whitespace characters (excluded from the result).
@@ -92,11 +94,12 @@ def tokenize_sql(query: str) -> List[Token]:
         (TokenType.FUNCTION, r"\b(?:" + "|".join(escaped_functions) + r")\b"),
         (TokenType.KEYWORD, r"\b(?:" + "|".join(escaped_keywords) + r")\b"),
         (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
+        (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
         (TokenType.LITERAL, r"\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?"),
         (TokenType.SYMBOL, OP_PATTERN),
         (TokenType.WHITESPACE, r"\s+"),
         (TokenType.COMMENT, r"--.*?$|/\*.*?\*/"),  # Single line and multi-line comments
-#         (TokenType.COMMENT, r"--[^\n]*|/\*[\s\S]*?\*/"),  # Single line and multi-line comments (newline-agnostic)
+        # (TokenType.COMMENT, r"--[^\n]*|/\*[\s\S]*?\*/"),  # newline-agnostic
         (TokenType.UNKNOWN, r"."),
     ]
 
@@ -126,14 +129,32 @@ def preprocess_text(text: str) -> str:
     text = " ".join(token.value for token in tokens)
     return text
 
+def anonymize_identifiers(text: str) -> str:
+    tokens = tokenize_sql(text)
+    anonymized_tokens = []
+    identifier_count = 0
+    identifier_map = {}
+
+    for token in tokens:
+        if token.type == TokenType.IDENTIFIER:
+            if token.value not in identifier_map:
+                identifier_count += 1
+                identifier_map[token.value] = f"identifier_{identifier_count}"
+            anonymized_tokens.append(Token(type=token.type, value=identifier_map[token.value], space=token.space))
+        else:
+            anonymized_tokens.append(token)
+
+    return " ".join(token.value for token in anonymized_tokens)
+
 
 if __name__ == "__main__":
     sample_text = [
         "  This   is not    a   Sample as tXt.  ",
-        " select name, hire_date  from   table   where  id =  10 and  name = ' John'  ",
-        "  select * from  table where   column in (1, 2, 3);",
+        " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
+        "  select * from  orders where   column in (1, 2, 3);",
         " SELECT p.department as dept  from personnel p where id = 10",
     ]
     for sample in sample_text:
         print(f"\nOriginal Text: '{sample}'")
         print(f"Processed Text: '{preprocess_text(sample)}'")
+        print(f"Anonymized Text: '{anonymize_identifiers(sample)}'")
