@@ -10,6 +10,7 @@ class TokenType(Enum):
     FUNCTION = auto()
     KEYWORD = auto()
     IDENTIFIER = auto()
+    TABLE = auto()
     ALIAS = auto()
     LITERAL = auto()
     SYMBOL = auto()
@@ -24,7 +25,7 @@ class Token:
     value: str
     space: bool = False
 
-@dataclass
+
 class Anonymizer:
     """A class to anonymize SQL identifiers (table names, column names, literals) in a SQL query
     while preserving SQL keywords and functions.
@@ -49,6 +50,7 @@ class Anonymizer:
         self.alias_count = 0
 
     # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
+<<<<<<< Updated upstream
     def __getitem__(self, key) -> str:
         identifier, token_type = key
         if token_type == TokenType.IDENTIFIER:
@@ -104,6 +106,34 @@ class Anonymizer:
         # Return identifier directly for other token types
         return identifier
     """
+=======
+    def __getitem__(self, identifier: str, token_type: TokenType) -> str:
+        match token_type:
+            case TokenType.IDENTIFIER:
+                if identifier not in self.column_map:
+                    self.column_count += 1
+                    self.column_map[identifier] = f"identifier_{self.column_count}"
+                return self.column_map[identifier]
+            case TokenType.TABLE:
+                if identifier not in self.table_map:
+                    self.table_count += 1
+                    self.table_map[identifier] = f"table_{self.table_count}"
+                return self.table_map[identifier]
+            case TokenType.ALIAS:
+                if identifier not in self.alias_map:
+                    self.alias_count += 1
+                    self.alias_map[identifier] = f"alias_{self.alias_count}"
+                return self.alias_map[identifier]
+            case TokenType.LITERAL:
+                if identifier not in self.literal_map:
+                    self.literal_count += 1
+                    self.literal_map[identifier] = f"literal_{self.literal_count}"
+                return self.literal_map[identifier]
+            case TokenType.FUNCTION | TokenType.KEYWORD | TokenType.SYMBOL | TokenType.COMMENT | TokenType.WHITESPACE:
+                return identifier
+            case _:
+                return identifier
+>>>>>>> Stashed changes
 
     # anonymize() → loop over tokens, replace TABLE/COLUMN/LITERAL based on clause
     def anonymize(self, query: str) -> str:
