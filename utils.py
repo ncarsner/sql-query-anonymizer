@@ -49,7 +49,8 @@ class Anonymizer:
         self.alias_count = 0
 
     # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
-    def __getitem__(self, identifier: str, token_type: TokenType) -> str:
+    def __getitem__(self, key) -> str:
+        identifier, token_type = key
         if token_type == TokenType.IDENTIFIER:
             if identifier not in self.column_map:
                 self.column_count += 1
