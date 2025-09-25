@@ -50,63 +50,6 @@ class Anonymizer:
         self.alias_count = 0
 
     # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
-<<<<<<< Updated upstream
-    def __getitem__(self, key) -> str:
-        identifier, token_type = key
-        if token_type == TokenType.IDENTIFIER:
-            if identifier not in self.column_map:
-                self.column_count += 1
-                self.column_map[identifier] = f"identifier_{self.column_count}"
-            return self.column_map[identifier]
-        elif token_type == TokenType.LITERAL:
-            if identifier not in self.literal_map:
-                self.literal_count += 1
-                self.literal_map[identifier] = f"literal_{self.literal_count}"
-            return self.literal_map[identifier]
-        elif token_type == TokenType.ALIAS:
-            if identifier not in self.alias_map:
-                self.alias_count += 1
-                self.alias_map[identifier] = f"alias_{self.alias_count}"
-            return self.alias_map[identifier]
-        # return all other types as is
-        elif token_type == TokenType.KEYWORD or token_type == TokenType.FUNCTION:
-            return identifier
-        elif token_type == TokenType.SYMBOL:
-            return identifier
-        elif token_type == TokenType.COMMENT:
-            return identifier
-        elif token_type == TokenType.WHITESPACE:
-            return identifier
-        return identifier
-
-    """
-    def __getitem__(self, identifier: str, token_type: TokenType) -> str:
-        # Map token types to their respective maps and counters
-        token_map = {
-            TokenType.IDENTIFIER: (self.column_map, "identifier_", self.column_count),
-            TokenType.LITERAL: (self.literal_map, "literal_", self.literal_count),
-            TokenType.ALIAS: (self.table_map, "alias_", self.table_count),
-        }
-
-        # Handle token types with maps and counters
-        if token_type in token_map:
-            token_dict, prefix, count = token_map[token_type]
-            if identifier not in token_dict:
-                count += 1
-                token_dict[identifier] = f"{prefix}{count}"
-                # Update the counter back to the object
-                if token_type == TokenType.IDENTIFIER:
-                    self.column_count = count
-                elif token_type == TokenType.LITERAL:
-                    self.literal_count = count
-                elif token_type == TokenType.ALIAS:
-                    self.table_count = count
-            return token_dict[identifier]
-
-        # Return identifier directly for other token types
-        return identifier
-    """
-=======
     def __getitem__(self, identifier: str, token_type: TokenType) -> str:
         match token_type:
             case TokenType.IDENTIFIER:
@@ -133,7 +76,6 @@ class Anonymizer:
                 return identifier
             case _:
                 return identifier
->>>>>>> Stashed changes
 
     # anonymize() → loop over tokens, replace TABLE/COLUMN/LITERAL based on clause
     def anonymize(self, query: str) -> str:
