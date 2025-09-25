@@ -24,6 +24,101 @@ class Token:
     value: str
     space: bool = False
 
+@dataclass
+class Anonymizer:
+    """A class to anonymize SQL identifiers (table names, column names, literals) in a SQL query
+    while preserving SQL keywords and functions.
+    Usage:
+        anonymizer = Anonymizer()
+        anonymized_query = anonymizer.anonymize(sql_query)
+    Methods:
+        - __init__: Initializes the anonymizer with empty mappings and counters.
+        - get: Returns the placeholder for a given identifier, creating a new one if it's not already mapped.
+        - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
+    """
+    def __init__(self):  # set up mappings and counters
+        self.table_map = {}
+        self.column_map = {}
+        self.literal_map = {}
+        self.keyword_map = {}
+        self.alias_map = {}
+        self.table_count = 0
+        self.column_count = 0
+        self.literal_count = 0
+        self.keyword_count = 0
+        self.alias_count = 0
+
+    # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
+    def __getitem__(self, key) -> str:
+        identifier, token_type = key
+        if token_type == TokenType.IDENTIFIER:
+            if identifier not in self.column_map:
+                self.column_count += 1
+                self.column_map[identifier] = f"identifier_{self.column_count}"
+            return self.column_map[identifier]
+        elif token_type == TokenType.LITERAL:
+            if identifier not in self.literal_map:
+                self.literal_count += 1
+                self.literal_map[identifier] = f"literal_{self.literal_count}"
+            return self.literal_map[identifier]
+        elif token_type == TokenType.ALIAS:
+            if identifier not in self.alias_map:
+                self.alias_count += 1
+                self.alias_map[identifier] = f"alias_{self.alias_count}"
+            return self.alias_map[identifier]
+        # return all other types as is
+        elif token_type == TokenType.KEYWORD or token_type == TokenType.FUNCTION:
+            return identifier
+        elif token_type == TokenType.SYMBOL:
+            return identifier
+        elif token_type == TokenType.COMMENT:
+            return identifier
+        elif token_type == TokenType.WHITESPACE:
+            return identifier
+        return identifier
+
+    """
+    def __getitem__(self, identifier: str, token_type: TokenType) -> str:
+        # Map token types to their respective maps and counters
+        token_map = {
+            TokenType.IDENTIFIER: (self.column_map, "identifier_", self.column_count),
+            TokenType.LITERAL: (self.literal_map, "literal_", self.literal_count),
+            TokenType.ALIAS: (self.table_map, "alias_", self.table_count),
+        }
+
+        # Handle token types with maps and counters
+        if token_type in token_map:
+            token_dict, prefix, count = token_map[token_type]
+            if identifier not in token_dict:
+                count += 1
+                token_dict[identifier] = f"{prefix}{count}"
+                # Update the counter back to the object
+                if token_type == TokenType.IDENTIFIER:
+                    self.column_count = count
+                elif token_type == TokenType.LITERAL:
+                    self.literal_count = count
+                elif token_type == TokenType.ALIAS:
+                    self.table_count = count
+            return token_dict[identifier]
+
+        # Return identifier directly for other token types
+        return identifier
+    """
+
+    # anonymize() → loop over tokens, replace TABLE/COLUMN/LITERAL based on clause
+    def anonymize(self, query: str) -> str:
+        tokens = tokenize_sql(query)
+        anonymized_tokens = [
+            Token(
+                type=token.type,
+                value=self.__getitem__(token.value, token.type) if token.type in {TokenType.IDENTIFIER, TokenType.LITERAL, TokenType.ALIAS} else token.value,
+                space=token.space
+            )
+            for token in tokens
+        ]
+        return " ".join(token.value for token in anonymized_tokens)
+
+
 
 def normalize_casing(text: str) -> str:
     def ignore_within_quotes(match):
@@ -129,6 +224,7 @@ def preprocess_text(text: str) -> str:
     text = " ".join(token.value for token in tokens)
     return text
 
+
 def anonymize_identifiers(text: str) -> str:
     tokens = tokenize_sql(text)
     anonymized_tokens = []
@@ -153,8 +249,16 @@ if __name__ == "__main__":
         " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
         "  select * from  orders where   column in (1, 2, 3);",
         " SELECT p.department as dept  from personnel p where id = 10",
+        "SELECT p.name as Employee FROM personnel p WHERE p.id = 10;",
+        # expected: SELECT alias_1.identifier_1 AS identifier_3 FROM identifier_4 identifier_5 WHERE identifier_4.identifier_6 = 10 ;
     ]
     for sample in sample_text:
-        print(f"\nOriginal Text: '{sample}'")
-        print(f"Processed Text: '{preprocess_text(sample)}'")
-        print(f"Anonymized Text: '{anonymize_identifiers(sample)}'")
+        print(f"\nOriginal Text: {sample}")
+        processed_sample = preprocess_text(sample)
+
+        print(f"Processed Text: {processed_sample}")
+        print(f"Anonymized Text: {anonymize_identifiers(processed_sample)}")
+
+        anonymizer = Anonymizer()
+        anonymized_query = anonymizer.anonymize(processed_sample)
+        print(f"w/ Anonymizer Class: {anonymized_query}")
