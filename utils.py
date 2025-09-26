@@ -1,18 +1,24 @@
-from enum import Enum, auto
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
+from enum import Enum, auto
 from typing import List
+from collections import defaultdict, Counter
+
+from constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 
 
 class TokenType(Enum):
     FUNCTION = auto()
     KEYWORD = auto()
     IDENTIFIER = auto()
+    TABLE = auto()
+    ALIAS = auto()
     LITERAL = auto()
     SYMBOL = auto()
     WHITESPACE = auto()
     COMMENT = auto()
     UNKNOWN = auto()
+
 
 @dataclass
 class Token:
@@ -20,74 +26,86 @@ class Token:
     value: str
     space: bool = False
 
-# SQL function sets as constants
-SQL_AGGREGATE_FUNCTIONS = {"GROUP_CONCAT", "STRING_AGG", "ARRAY_AGG", "FIRST", "LAST", "BIT_AND", "BIT_OR", "BIT_XOR", "CORR", "COVAR_POP", "COVAR_SAMP", "JSON_AGG", "JSONB_AGG", "XMLAGG", "LISTAGG",}
 
-SQL_STRING_FUNCTIONS = {"UPPER", "LOWER", "SUBSTRING", "SUBSTR", "TRIM", "LENGTH", "LEN", "CONCAT", "REPLACE", "LEFT", "RIGHT", "LPAD", "RPAD", "SPLIT_PART", "CHAR_LENGTH", "CHARINDEX", "POSITION", "INITCAP", "TO_CHAR", "FORMAT", "REGEXP_REPLACE", "REGEXP_MATCHES", "REGEXP_SUBSTR", "TRANSLATE", "STRPOS", "OVERLAY", "BTRIM", "LTRIM", "RTRIM", "ASCII", "CHR", "SOUNDEX", "DIFFERENCE", "CONCAT_WS",}
+class Anonymizer:
+    """A class to anonymize SQL identifiers (table names, column names, literals) in a SQL query
+    while preserving SQL keywords and functions.
+    Usage:
+        anonymizer = Anonymizer()
+        anonymized_query = anonymizer.anonymize(sql_query)
+    Methods:
+        - __init__: Initializes the anonymizer with empty mappings and counters.
+        - get: Returns the placeholder for a given identifier, creating a new one if it's not already mapped.
+        - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
+    """
+    def __init__(self):  # set up mappings and counters
 
-SQL_DATE_FUNCTIONS = {"NOW", "GETDATE", "DATEADD", "DATEDIFF", "DATEPART", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "EXTRACT", "TO_DATE", "TO_TIMESTAMP", "AGE", "TIMESTAMPDIFF", "TIMESTAMPADD", "DAY", "MONTH", "YEAR", "HOUR", "MINUTE", "SECOND", "WEEK", "QUARTER", "TIMEZONE", "TIMEZONE_HOUR", "TIMEZONE_MINUTE", "ISODOW", "ISOWEEK", "JULIANDAY", "STRFTIME", "TO_UNIXTIME", "FROM_UNIXTIME", "SYSDATE", "SYSTIMESTAMP", "LOCALTIMESTAMP", "CURRENT_TIMEZONE", "LOCALTIME",}
+        # self.mappings: dict[str, str] = defaultdict(dict)
+        self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
+        # self.table_map = {}
+        # self.column_map = {}
+        # self.literal_map = {}
+        # self.keyword_map = {}
+        # self.alias_map = {}
+        """
+        {
+        "TABLE": {"employees": "TABLE_1"},
+        "COLUMN": {"name": "COLUMN_1", "salary": "COLUMN_2"},
+        "LITERAL": {"50000": "LITERAL_1"}
+        }"""
 
-SQL_NUMERIC_FUNCTIONS = {"COUNT", "SUM", "AVG", "MIN", "MAX", "ROUND", "CEIL", "FLOOR", "ABS", "POWER", "SQRT", "EXP", "LN", "LOG", "LOG10", "MOD", "RANDOM", "TRUNC", "SIGN", "GREATEST", "LEAST", "DIV", "BIT_LENGTH", "OCTET_LENGTH", "WIDTH_BUCKET", "CUME_DIST", "DENSE_RANK", "PERCENT_RANK", "RANK", "ROW_NUMBER", "NTILE", "CORR", "COVAR_POP", "COVAR_SAMP", "VARIANCE", "STDDEV", "MEDIAN", "MODE",}
+        self.counters: dict[str, int] = Counter()
+        # self.table_count = 0
+        # self.column_count = 0
+        # self.literal_count = 0
+        # self.keyword_count = 0
+        # self.alias_count = 0
 
-ALL_SQL_FUNCTIONS = (SQL_AGGREGATE_FUNCTIONS | SQL_STRING_FUNCTIONS | SQL_DATE_FUNCTIONS | SQL_NUMERIC_FUNCTIONS)
+    # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
+    # IF CALLED MULTIPLE TIMES, INCREASES COUNTERS AND OVERRIDES VALUES
+    # CONSIDER CREATING __setitem__() TO PREVENT THIS
+    def __getitem__(self, identifier: str, token_type: TokenType) -> str:
+        match token_type:
 
-SQL_KEYWORDS = { # fmt: off
-    "SELECT", "INSERT", "UPDATE", "DELETE", "DISTINCT", "UNIQUE", "AS", "FROM",
-    "JOIN", "INNER JOIN", "OUTER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "FULL OUTER JOIN", "CROSS JOIN",
-    "ON", "WHERE", "LIKE", "AND", "OR", "IN", "NOT", "BETWEEN", "IS", "NULL",
+            case TokenType.IDENTIFIER:
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"identifier_{self.counters[identifier]}"
+                return self.mappings[token_type][identifier]
 
-    "CASE", "WHEN", "THEN", "ELSE", "END", "UNION", "ALL",
+            case TokenType.TABLE:
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"table_{self.counters[identifier]}"
+                return self.mappings[token_type][identifier]
 
-    "GROUP BY", "ORDER BY", "IF", "EXISTS", "ELSEIF", "WITH", "HAVING",
-    "LIMIT", "OFFSET",
-    "CAST",
-    # "COUNT", "SUM", "AVG", "MIN", "MAX",
-    "TRUE", "FALSE", "NULLIF", "COALESCE",
-    # "ROUND", "LENGTH", "LEN", "SUBSTRING", "SUBSTR", "TRIM", "UPPER", "LOWER",
-    # "GETDATE", "NOW", "TODAY", "DATEADD", "DATEDIFF", "DATEPART", "CONVERT",
+            case TokenType.ALIAS:
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"alias_{self.counters[identifier]}"
+                return self.mappings[token_type][identifier]
+            
+            case TokenType.LITERAL:
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"literal_{self.counters[identifier]}"
+                return self.mappings[token_type][identifier]
 
-    "CREATE", "ALTER", "DROP", "INDEX", "VIEW", "TRIGGER", "TABLE", "COLUMN",
-    "PRIMARY KEY", "FOREIGN KEY", "UNIQUE KEY", "CHECK",
-    "DEFAULT", "REFERENCES", "EXCEPT", "INTERSECT", "RECURSIVE",
-    
-    "INTO", "VALUES",
+            # case TokenType.FUNCTION | TokenType.KEYWORD | TokenType.SYMBOL | TokenType.COMMENT | TokenType.WHITESPACE:
+            #     return identifier
+            case _:
+                return identifier
 
-    "GRANT", "REVOKE",
-    "COMMIT", "ROLLBACK", "SAVEPOINT", "TRANSACTION", "LOCK",
-    "BEGIN", "END", "DECLARE", "CURSOR", "FETCH", "OPEN", "CLOSE",
+    # anonymize() → loop over tokens, replace TABLE/COLUMN/LITERAL based on clause
+    def anonymize(self, query: str) -> str:
+        tokens = tokenize_sql(query)
+        anonymized_tokens = [
+            Token(
+                type=token.type,
+                value=self.__getitem__(token.value, token.type) if token.type in {TokenType.IDENTIFIER, TokenType.LITERAL, TokenType.ALIAS} else token.value,
+                space=token.space
+            )
+            for token in tokens
+        ]
+        return " ".join(token.value for token in anonymized_tokens)
 
-    # "TABLESPACE",
-    # "ANALYZE",
-    # "EXPLAIN",
-    # "VACUUM",
-    "SET",
-    "SHOW",
-    "DESCRIBE",
-    "USE",
-    "RETURNS",
-    # "RETURNING",
 
-    "DATABASE", "SCHEMA", "FUNCTION", "PROCEDURE",
-    "TRUNCATE", "REPLACE", "MERGE", "UPSERT",
-    "ASSERT", "RAISE", "THROW",
-
-    "LOOP", "EXIT", "CONTINUE", "FOR", "WHILE", "DO",
-
-    # "LANGUAGE",
-    # "PLPGSQL",
-    # "PLSQL",
-    # "PLV8",
-    # "PLPYTHON",
-    # "PLPERLU",
-    # "PLTCL",
-    # "PLJAVA",
-}
-
-SYMBOLS = {
-    "*", ",", "()", "(", ")", "[", "]", ";", "_",
-    "<=", "<", ">=", ">", "=", "!", "%", "'",
-    "+", "-", "/", "^", "&", "|", "~",
-} # fmt: on
 
 def normalize_casing(text: str) -> str:
     def ignore_within_quotes(match):
@@ -115,31 +133,24 @@ def normalize_casing(text: str) -> str:
 
 
 def collapse_extra_spaces(text: str) -> str:
-    # return re.sub(r"\s+", " ", text).strip()
     return " ".join(re.split(r"\s+", text.strip()))
 
 
 def normalize_keyword_casing(text: str) -> str:
-    return " ".join(
-        word.upper() if word.upper() in (SQL_KEYWORDS | ALL_SQL_FUNCTIONS) else word for word in text.split()
-    )
+    sorted_keywords = sorted(SQL_KEYWORDS | ALL_SQL_FUNCTIONS, key=len, reverse=True)
+    pattern = r"\b(?:" + "|".join(map(re.escape, sorted_keywords)) + r")\b"
+    return re.sub(pattern, lambda m: m.group(0).upper(), text, flags=re.IGNORECASE)
 
 
 def tokenize_sql(query: str) -> List[Token]:
     """
-    Tokenizes a given SQL query string into a list of tokens.
-    This function uses regular expressions to identify and classify different
-    components of an SQL query, such as keywords, identifiers, symbols, literals,
+    Tokenizes a given SQL query string into a list of tokens, such as keywords, identifiers, symbols, literals,
     and whitespace. Each identified component is returned as a `Token` object.
-    Args:
-        query (str): The SQL query string to be tokenized.
-    Returns:
-        List[Token]: A list of `Token` objects representing the components of the query.
-                     Whitespace tokens are excluded from the result.
     Token Types:
         - TokenType.FUNCTION: SQL functions (e.g., COUNT, SUM, UPPER).
         - TokenType.KEYWORD: Whole word SQL keywords (e.g., SELECT, FROM, WHERE).
         - TokenType.IDENTIFIER: Identifiers such as table or column names.
+        - TokenType.ALIAS: Aliases for tables or columns.
         - TokenType.LITERAL: String and numeric literals.
         - TokenType.SYMBOL: Operators and punctuation outside of quotes.
         - TokenType.WHITESPACE: Whitespace characters (excluded from the result).
@@ -153,54 +164,88 @@ def tokenize_sql(query: str) -> List[Token]:
     tokens = []
 
     # Sort by length to match longer keywords first and avoid partial matches
-    escaped_functions = sorted([re.escape(func) for func in ALL_SQL_FUNCTIONS], key=len, reverse=True)
-    escaped_keywords = sorted([re.escape(kw) for kw in SQL_KEYWORDS], key=len, reverse=True)
-    
+    escaped_functions = sorted(
+        [re.escape(func) for func in ALL_SQL_FUNCTIONS], key=len, reverse=True
+    )
+    escaped_keywords = sorted(
+        [re.escape(kw) for kw in SQL_KEYWORDS], key=len, reverse=True
+    )
+
     # Define regex patterns for each TokenType
     token_specification = [
-        (TokenType.FUNCTION, r'\b(?:' + "|".join(escaped_functions) + r')\b'),
-        (TokenType.KEYWORD, r'\b(?:' + "|".join(escaped_keywords) + r')\b'),
-        (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?'),
-        (TokenType.LITERAL, r'\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?'),
-        (TokenType.SYMBOL, r'(?<!["\'])(?:' + "|".join(re.escape(sym) for sym in SYMBOLS) + r')(?!["\'])'),
-        (TokenType.WHITESPACE, r'\s+'),
-        (TokenType.COMMENT, r'--[^\n]*|/\*[\s\S]*?\*/'),  # Single line and multi-line comments (newline-agnostic)
-        (TokenType.UNKNOWN, r'.'),
+        (TokenType.FUNCTION, r"\b(?:" + "|".join(escaped_functions) + r")\b"),
+        (TokenType.KEYWORD, r"\b(?:" + "|".join(escaped_keywords) + r")\b"),
+        (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
+        (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
+        (TokenType.LITERAL, r"\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?"),
+        (TokenType.SYMBOL, OP_PATTERN),
+        (TokenType.WHITESPACE, r"\s+"),
+        (TokenType.COMMENT, r"--.*?$|/\*.*?\*/"),  # Single line and multi-line comments
+        # (TokenType.COMMENT, r"--[^\n]*|/\*[\s\S]*?\*/"),  # newline-agnostic
+        (TokenType.UNKNOWN, r"."),
     ]
-    
+
     # Combine patterns into a single regex
-    token_regex = '|'.join(f'(?P<{tt.name}>{pattern})' for tt, pattern in token_specification)
-    regex = re.compile(token_regex, re.IGNORECASE)
-    
+    regex = re.compile(
+        "|".join(f"(?P<{tt.name}>{pattern})" for tt, pattern in token_specification),
+        re.IGNORECASE,
+    )
+
     # Match tokens in the query
     for match in regex.finditer(query):
         for token_type in TokenType:
             if match.lastgroup == token_type.name:
                 value = match.group(token_type.name)
-                if token_type != TokenType.WHITESPACE:  # Skip whitespace tokens if not needed
+                if (token_type != TokenType.WHITESPACE):
                     tokens.append(Token(type=token_type, value=value, space=False))
                 break
-    
-    return tokens
 
+    return tokens
 
 
 def preprocess_text(text: str) -> str:
     text = normalize_casing(text)
     text = collapse_extra_spaces(text)
     text = normalize_keyword_casing(text)
-    tokens = tokenize_sql(text) # changes to List of Tokens
+    tokens = tokenize_sql(text)
     text = " ".join(token.value for token in tokens)
     return text
+
+
+def anonymize_identifiers(text: str) -> str:
+    tokens = tokenize_sql(text)
+    anonymized_tokens = []
+    identifier_count = 0
+    identifier_map = {}
+
+    for token in tokens:
+        if token.type == TokenType.IDENTIFIER:
+            if token.value not in identifier_map:
+                identifier_count += 1
+                identifier_map[token.value] = f"identifier_{identifier_count}"
+            anonymized_tokens.append(Token(type=token.type, value=identifier_map[token.value], space=token.space))
+        else:
+            anonymized_tokens.append(token)
+
+    return " ".join(token.value for token in anonymized_tokens)
 
 
 if __name__ == "__main__":
     sample_text = [
         "  This   is not    a   Sample as tXt.  ",
-        " select name, hire_date  from   table   where  id =  10 and  name = ' John'  ",
-        "  select * from  table where   column in (1, 2, 3);",
+        " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
+        "  select * from  orders where   column in (1, 2, 3);",
         " SELECT p.department as dept  from personnel p where id = 10",
+        "SELECT p.name as Employee FROM personnel p WHERE p.id = 10;",
+        # expected: SELECT alias_1.identifier_1 AS identifier_3 FROM identifier_4 identifier_5 WHERE identifier_4.identifier_6 = 10 ;
     ]
     for sample in sample_text:
-        print(f"\nOriginal Text: '{sample}'")
-        print(f"Processed Text: '{preprocess_text(sample)}'")
+        print(f"\nOriginal Text: {sample}")
+        processed_sample = preprocess_text(sample)
+
+        print(f"Processed Text: {processed_sample}")
+        print(f"Anonymized Text: {anonymize_identifiers(processed_sample)}")
+
+        anonymizer = Anonymizer()
+        anonymized_query = anonymizer.anonymize(processed_sample)
+        print(f"w/ Anonymizer Class: {anonymized_query}")

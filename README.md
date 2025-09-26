@@ -18,8 +18,17 @@ Command-line function to anonymize SQL queries.
 sql-query-anonymizer/
 │
 ├── utils/
+    ├── constants.py
+    └── utils.py
 ├── main.py
-└── README.md
+├── pyproject.toml
+├── uv.lock
+├── .gitignore
+├── .pre-commit-config.yaml
+├── .python-version
+├── README.md
+└── LICENSE
+
 ```
 
 ---
