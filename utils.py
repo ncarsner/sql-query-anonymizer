@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List
+from collections import defaultdict, Counter
 
 from constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 
@@ -38,42 +39,56 @@ class Anonymizer:
         - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
     """
     def __init__(self):  # set up mappings and counters
-        self.table_map = {}
-        self.column_map = {}
-        self.literal_map = {}
-        self.keyword_map = {}
-        self.alias_map = {}
-        self.table_count = 0
-        self.column_count = 0
-        self.literal_count = 0
-        self.keyword_count = 0
-        self.alias_count = 0
+
+        # self.mappings: dict[str, str] = defaultdict(dict)
+        self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
+        # self.table_map = {}
+        # self.column_map = {}
+        # self.literal_map = {}
+        # self.keyword_map = {}
+        # self.alias_map = {}
+        """
+        {
+        "TABLE": {"employees": "TABLE_1"},
+        "COLUMN": {"name": "COLUMN_1", "salary": "COLUMN_2"},
+        "LITERAL": {"50000": "LITERAL_1"}
+        }"""
+
+        self.counters: dict[str, int] = Counter()
+        # self.table_count = 0
+        # self.column_count = 0
+        # self.literal_count = 0
+        # self.keyword_count = 0
+        # self.alias_count = 0
 
     # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
+    # IF CALLED MULTIPLE TIMES, INCREASES COUNTERS AND OVERRIDES VALUES
+    # CONSIDER CREATING __setitem__() TO PREVENT THIS
     def __getitem__(self, identifier: str, token_type: TokenType) -> str:
         match token_type:
+
             case TokenType.IDENTIFIER:
-                if identifier not in self.column_map:
-                    self.column_count += 1
-                    self.column_map[identifier] = f"identifier_{self.column_count}"
-                return self.column_map[identifier]
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"identifier_{self.counters[identifier]}"
+                return self.mappings[token_type][identifier]
+
             case TokenType.TABLE:
-                if identifier not in self.table_map:
-                    self.table_count += 1
-                    self.table_map[identifier] = f"table_{self.table_count}"
-                return self.table_map[identifier]
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"table_{self.counters[identifier]}"
+                return self.mappings[token_type][identifier]
+
             case TokenType.ALIAS:
-                if identifier not in self.alias_map:
-                    self.alias_count += 1
-                    self.alias_map[identifier] = f"alias_{self.alias_count}"
-                return self.alias_map[identifier]
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"alias_{self.counters[identifier]}"
+                return self.mappings[token_type][identifier]
+            
             case TokenType.LITERAL:
-                if identifier not in self.literal_map:
-                    self.literal_count += 1
-                    self.literal_map[identifier] = f"literal_{self.literal_count}"
-                return self.literal_map[identifier]
-            case TokenType.FUNCTION | TokenType.KEYWORD | TokenType.SYMBOL | TokenType.COMMENT | TokenType.WHITESPACE:
-                return identifier
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"literal_{self.counters[identifier]}"
+                return self.mappings[token_type][identifier]
+
+            # case TokenType.FUNCTION | TokenType.KEYWORD | TokenType.SYMBOL | TokenType.COMMENT | TokenType.WHITESPACE:
+            #     return identifier
             case _:
                 return identifier
 
