@@ -38,28 +38,16 @@ class Anonymizer:
         - get: Returns the placeholder for a given identifier, creating a new one if it's not already mapped.
         - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
     """
-
-    def __init__(self):  # set up mappings and counters
-        # self.mappings: dict[str, str] = defaultdict(dict)
+    def __init__(self):
         self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
-        # self.table_map = {}
-        # self.column_map = {}
-        # self.literal_map = {}
-        # self.keyword_map = {}
-        # self.alias_map = {}
-        """
+        self.counters: dict[str, int] = Counter()
+
+        """Example:
         {
         "TABLE": {"employees": "TABLE_1"},
         "COLUMN": {"name": "COLUMN_1", "salary": "COLUMN_2"},
         "LITERAL": {"50000": "LITERAL_1"}
         }"""
-
-        self.counters: dict[str, int] = Counter()
-        # self.table_count = 0
-        # self.column_count = 0
-        # self.literal_count = 0
-        # self.keyword_count = 0
-        # self.alias_count = 0
 
     # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
     # IF CALLED MULTIPLE TIMES, INCREASES COUNTERS AND OVERRIDES VALUES
@@ -98,8 +86,6 @@ class Anonymizer:
                 )
                 return self.mappings[token_type][identifier]
 
-            # case TokenType.FUNCTION | TokenType.KEYWORD | TokenType.SYMBOL | TokenType.COMMENT | TokenType.WHITESPACE:
-            #     return identifier
             case _:
                 return identifier
 
@@ -188,11 +174,20 @@ def tokenize_sql(query: str) -> List[Token]:
     token_specification = [
         (TokenType.FUNCTION, r"\b(?:" + "|".join(escaped_functions) + r")\b"),
         (TokenType.KEYWORD, r"\b(?:" + "|".join(escaped_keywords) + r")\b"),
+
+        # (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
+
+        # Gets alias - needs to be before IDENTIFIER to avoid conflicts
+        # Needs to not increment counter if called multiple times on same alias
+        (TokenType.ALIAS, r"(?:SELECT|)\b\w+(?=\.)|\b[a-zA-Z_]\b(?=WHERE|)"),
+
+      # Match aliases in SELECT statements or after FROM/AS clauses
+        # (TokenType.ALIAS, r"\b(?:SELECT|FROM|AS)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b"),
+
         (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
-        (
-            TokenType.ALIAS,
-            r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)",
-        ),
+        # (TokenType.IDENTIFIER, r"\b[a-zA-Z_][a-zA-Z0-9_]*\b(?!\s+AS\b)"),
+
+
         (TokenType.LITERAL, r"\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?"),
         (TokenType.SYMBOL, OP_PATTERN),
         (TokenType.WHITESPACE, r"\s+"),
@@ -254,10 +249,10 @@ def anonymize_identifiers(text: str) -> str:
 
 if __name__ == "__main__":
     sample_text = [
-        "  This   is not    a   Sample as tXt.  ",
-        " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
-        "  select * from  orders where   column in (1, 2, 3);",
-        " SELECT p.department as dept  from personnel p where id = 10",
+        # "  This   is not    a   Sample as tXt.  ",
+        # " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
+        # "  select * from  orders where   column in (1, 2, 3);",
+        # " SELECT p.department as dept  from personnel p where id = 10",
         "SELECT p.name as Employee FROM personnel p WHERE p.id = 10;",
         # expected: SELECT alias_1.identifier_1 AS identifier_3 FROM identifier_4 identifier_5 WHERE identifier_4.identifier_6 = 10 ;
     ]
