@@ -10,9 +10,9 @@ from constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 class TokenType(Enum):
     FUNCTION = auto()
     KEYWORD = auto()
-    IDENTIFIER = auto()
     TABLE = auto()
     ALIAS = auto()
+    IDENTIFIER = auto()
     LITERAL = auto()
     SYMBOL = auto()
     WHITESPACE = auto()
@@ -53,37 +53,31 @@ class Anonymizer:
     # IF CALLED MULTIPLE TIMES, INCREASES COUNTERS AND OVERRIDES VALUES
     # CONSIDER CREATING __setitem__() TO PREVENT THIS
     def __getitem__(self, identifier: str, token_type: TokenType) -> str:
+
         print("getitem called")
         print(f"Identifier: {identifier}, Type: {token_type}")
         print("mappings: ", self.mappings)
         print("counters: ", self.counters)
-        match token_type:
-            case TokenType.IDENTIFIER:
-                self.counters[token_type] += 1
-                self.mappings[token_type][identifier] = (
-                    f"identifier_{self.counters[token_type]}"
-                )
-                return self.mappings[token_type][identifier]
 
+        match token_type:
             case TokenType.TABLE:
-                self.counters[token_type] += 1
-                self.mappings[token_type][identifier] = (
-                    f"table_{self.counters[token_type]}"
-                )
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = f"table_{self.counters[identifier]}"
                 return self.mappings[token_type][identifier]
 
             case TokenType.ALIAS:
-                self.counters[token_type] += 1
-                self.mappings[token_type][identifier] = (
-                    f"alias_{self.counters[token_type]}"
-                )
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = (f"alias_{self.counters[identifier]}")
+                return self.mappings[token_type][identifier]
+
+            case TokenType.IDENTIFIER:
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = (f"identifier_{self.counters[identifier]}")
                 return self.mappings[token_type][identifier]
 
             case TokenType.LITERAL:
-                self.counters[token_type] += 1
-                self.mappings[token_type][identifier] = (
-                    f"literal_{self.counters[token_type]}"
-                )
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = (f"literal_{self.counters[identifier]}")
                 return self.mappings[token_type][identifier]
 
             case _:
@@ -97,7 +91,7 @@ class Anonymizer:
                 type=token.type,
                 value=self.__getitem__(token.value, token.type)
                 if token.type
-                in {TokenType.IDENTIFIER, TokenType.LITERAL, TokenType.ALIAS}
+                in {TokenType.IDENTIFIER, TokenType.TABLE, TokenType.ALIAS, TokenType.LITERAL}
                 else token.value,
                 space=token.space,
             )
@@ -175,14 +169,15 @@ def tokenize_sql(query: str) -> List[Token]:
         (TokenType.FUNCTION, r"\b(?:" + "|".join(escaped_functions) + r")\b"),
         (TokenType.KEYWORD, r"\b(?:" + "|".join(escaped_keywords) + r")\b"),
 
-        # (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
+        (TokenType.TABLE, r"(?<=\bFROM\s)\w+"),
 
+        # (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
         # Gets alias - needs to be before IDENTIFIER to avoid conflicts
         # Needs to not increment counter if called multiple times on same alias
-        (TokenType.ALIAS, r"(?:SELECT|)\b\w+(?=\.)|\b[a-zA-Z_]\b(?=WHERE|)"),
+        # (TokenType.ALIAS, r"(?:SELECT|)\b\w+(?=\.)|\b[a-zA-Z_]\b(?=WHERE|)"),
 
-      # Match aliases in SELECT statements or after FROM/AS clauses
-        # (TokenType.ALIAS, r"\b(?:SELECT|FROM|AS)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b"),
+        # Match aliases in SELECT statements or after FROM/AS clauses
+        (TokenType.ALIAS, r"\b(?:SELECT|FROM|AS)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b"),
 
         (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
         # (TokenType.IDENTIFIER, r"\b[a-zA-Z_][a-zA-Z0-9_]*\b(?!\s+AS\b)"),
