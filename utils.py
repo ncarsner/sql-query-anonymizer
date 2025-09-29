@@ -1,8 +1,8 @@
 import re
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List
-from collections import defaultdict, Counter
 
 from constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 
@@ -10,9 +10,9 @@ from constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 class TokenType(Enum):
     FUNCTION = auto()
     KEYWORD = auto()
-    IDENTIFIER = auto()
     TABLE = auto()
     ALIAS = auto()
+    IDENTIFIER = auto()
     LITERAL = auto()
     SYMBOL = auto()
     WHITESPACE = auto()
@@ -38,40 +38,28 @@ class Anonymizer:
         - get: Returns the placeholder for a given identifier, creating a new one if it's not already mapped.
         - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
     """
-    def __init__(self):  # set up mappings and counters
-
-        # self.mappings: dict[str, str] = defaultdict(dict)
+    def __init__(self):
         self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
-        # self.table_map = {}
-        # self.column_map = {}
-        # self.literal_map = {}
-        # self.keyword_map = {}
-        # self.alias_map = {}
-        """
+        self.counters: dict[str, int] = Counter()
+
+        """Example:
         {
         "TABLE": {"employees": "TABLE_1"},
         "COLUMN": {"name": "COLUMN_1", "salary": "COLUMN_2"},
         "LITERAL": {"50000": "LITERAL_1"}
         }"""
 
-        self.counters: dict[str, int] = Counter()
-        # self.table_count = 0
-        # self.column_count = 0
-        # self.literal_count = 0
-        # self.keyword_count = 0
-        # self.alias_count = 0
-
     # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
     # IF CALLED MULTIPLE TIMES, INCREASES COUNTERS AND OVERRIDES VALUES
     # CONSIDER CREATING __setitem__() TO PREVENT THIS
     def __getitem__(self, identifier: str, token_type: TokenType) -> str:
+
+        print("getitem called")
+        print(f"Identifier: {identifier}, Type: {token_type}")
+        print("mappings: ", self.mappings)
+        print("counters: ", self.counters)
+
         match token_type:
-
-            case TokenType.IDENTIFIER:
-                self.counters[identifier] += 1
-                self.mappings[token_type][identifier] = f"identifier_{self.counters[identifier]}"
-                return self.mappings[token_type][identifier]
-
             case TokenType.TABLE:
                 self.counters[identifier] += 1
                 self.mappings[token_type][identifier] = f"table_{self.counters[identifier]}"
@@ -79,16 +67,19 @@ class Anonymizer:
 
             case TokenType.ALIAS:
                 self.counters[identifier] += 1
-                self.mappings[token_type][identifier] = f"alias_{self.counters[identifier]}"
-                return self.mappings[token_type][identifier]
-            
-            case TokenType.LITERAL:
-                self.counters[identifier] += 1
-                self.mappings[token_type][identifier] = f"literal_{self.counters[identifier]}"
+                self.mappings[token_type][identifier] = (f"alias_{self.counters[identifier]}")
                 return self.mappings[token_type][identifier]
 
-            # case TokenType.FUNCTION | TokenType.KEYWORD | TokenType.SYMBOL | TokenType.COMMENT | TokenType.WHITESPACE:
-            #     return identifier
+            case TokenType.IDENTIFIER:
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = (f"identifier_{self.counters[identifier]}")
+                return self.mappings[token_type][identifier]
+
+            case TokenType.LITERAL:
+                self.counters[identifier] += 1
+                self.mappings[token_type][identifier] = (f"literal_{self.counters[identifier]}")
+                return self.mappings[token_type][identifier]
+
             case _:
                 return identifier
 
@@ -98,13 +89,15 @@ class Anonymizer:
         anonymized_tokens = [
             Token(
                 type=token.type,
-                value=self.__getitem__(token.value, token.type) if token.type in {TokenType.IDENTIFIER, TokenType.LITERAL, TokenType.ALIAS} else token.value,
-                space=token.space
+                value=self.__getitem__(token.value, token.type)
+                if token.type
+                in {TokenType.IDENTIFIER, TokenType.TABLE, TokenType.ALIAS, TokenType.LITERAL}
+                else token.value,
+                space=token.space,
             )
             for token in tokens
         ]
         return " ".join(token.value for token in anonymized_tokens)
-
 
 
 def normalize_casing(text: str) -> str:
@@ -175,8 +168,21 @@ def tokenize_sql(query: str) -> List[Token]:
     token_specification = [
         (TokenType.FUNCTION, r"\b(?:" + "|".join(escaped_functions) + r")\b"),
         (TokenType.KEYWORD, r"\b(?:" + "|".join(escaped_keywords) + r")\b"),
+
+        (TokenType.TABLE, r"(?<=\bFROM\s)\w+"),
+
+        # (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
+        # Gets alias - needs to be before IDENTIFIER to avoid conflicts
+        # Needs to not increment counter if called multiple times on same alias
+        # (TokenType.ALIAS, r"(?:SELECT|)\b\w+(?=\.)|\b[a-zA-Z_]\b(?=WHERE|)"),
+
+        # Match aliases in SELECT statements or after FROM/AS clauses
+        (TokenType.ALIAS, r"\b(?:SELECT|FROM|AS)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b"),
+
         (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
-        (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
+        # (TokenType.IDENTIFIER, r"\b[a-zA-Z_][a-zA-Z0-9_]*\b(?!\s+AS\b)"),
+
+
         (TokenType.LITERAL, r"\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?"),
         (TokenType.SYMBOL, OP_PATTERN),
         (TokenType.WHITESPACE, r"\s+"),
@@ -196,7 +202,7 @@ def tokenize_sql(query: str) -> List[Token]:
         for token_type in TokenType:
             if match.lastgroup == token_type.name:
                 value = match.group(token_type.name)
-                if (token_type != TokenType.WHITESPACE):
+                if token_type != TokenType.WHITESPACE:
                     tokens.append(Token(type=token_type, value=value, space=False))
                 break
 
@@ -223,7 +229,13 @@ def anonymize_identifiers(text: str) -> str:
             if token.value not in identifier_map:
                 identifier_count += 1
                 identifier_map[token.value] = f"identifier_{identifier_count}"
-            anonymized_tokens.append(Token(type=token.type, value=identifier_map[token.value], space=token.space))
+            anonymized_tokens.append(
+                Token(
+                    type=token.type,
+                    value=identifier_map[token.value],
+                    space=token.space,
+                )
+            )
         else:
             anonymized_tokens.append(token)
 
@@ -232,10 +244,10 @@ def anonymize_identifiers(text: str) -> str:
 
 if __name__ == "__main__":
     sample_text = [
-        "  This   is not    a   Sample as tXt.  ",
-        " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
-        "  select * from  orders where   column in (1, 2, 3);",
-        " SELECT p.department as dept  from personnel p where id = 10",
+        # "  This   is not    a   Sample as tXt.  ",
+        # " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
+        # "  select * from  orders where   column in (1, 2, 3);",
+        # " SELECT p.department as dept  from personnel p where id = 10",
         "SELECT p.name as Employee FROM personnel p WHERE p.id = 10;",
         # expected: SELECT alias_1.identifier_1 AS identifier_3 FROM identifier_4 identifier_5 WHERE identifier_4.identifier_6 = 10 ;
     ]
