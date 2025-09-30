@@ -11,6 +11,7 @@ class TokenType(Enum):
     FUNCTION = auto()
     KEYWORD = auto()
     TABLE = auto()
+    TABLE_ALIAS = auto()
     ALIAS = auto()
     IDENTIFIER = auto()
     LITERAL = auto()
@@ -42,48 +43,29 @@ class Anonymizer:
         self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
         self.counters: dict[str, int] = Counter()
 
-        """Example:
-        {
-        "TABLE": {"employees": "TABLE_1"},
-        "COLUMN": {"name": "COLUMN_1", "salary": "COLUMN_2"},
-        "LITERAL": {"50000": "LITERAL_1"}
-        }"""
-
-    # get() (or `__getitem__` = more Pythonic) → return placeholder for a value, creating one if new
-    # IF CALLED MULTIPLE TIMES, INCREASES COUNTERS AND OVERRIDES VALUES
-    # CONSIDER CREATING __setitem__() TO PREVENT THIS
     def __getitem__(self, identifier: str, token_type: TokenType) -> str:
-
+        # DEBUGGING PRINTS
         print("getitem called")
         print(f"Identifier: {identifier}, Type: {token_type}")
         print("mappings: ", self.mappings)
         print("counters: ", self.counters)
 
-        match token_type:
-            case TokenType.TABLE:
-                self.counters[identifier] += 1
-                self.mappings[token_type][identifier] = f"table_{self.counters[identifier]}"
-                return self.mappings[token_type][identifier]
+        type_prefixes = {
+            TokenType.TABLE: "table",
+            TokenType.ALIAS: "alias",
+            TokenType.TABLE_ALIAS: "table_alias",
+            TokenType.IDENTIFIER: "identifier",
+            TokenType.LITERAL: "literal",
+        }
 
-            case TokenType.ALIAS:
-                self.counters[identifier] += 1
-                self.mappings[token_type][identifier] = (f"alias_{self.counters[identifier]}")
-                return self.mappings[token_type][identifier]
+        if token_type in type_prefixes:
+            self.counters[identifier] += 1
+            prefix = type_prefixes[token_type]
+            self.mappings[token_type][identifier] = f"{prefix}_{self.counters[identifier]}"
+            return self.mappings[token_type][identifier]
+        
+        return identifier
 
-            case TokenType.IDENTIFIER:
-                self.counters[identifier] += 1
-                self.mappings[token_type][identifier] = (f"identifier_{self.counters[identifier]}")
-                return self.mappings[token_type][identifier]
-
-            case TokenType.LITERAL:
-                self.counters[identifier] += 1
-                self.mappings[token_type][identifier] = (f"literal_{self.counters[identifier]}")
-                return self.mappings[token_type][identifier]
-
-            case _:
-                return identifier
-
-    # anonymize() → loop over tokens, replace TABLE/COLUMN/LITERAL based on clause
     def anonymize(self, query: str) -> str:
         tokens = tokenize_sql(query)
         anonymized_tokens = [
@@ -91,7 +73,7 @@ class Anonymizer:
                 type=token.type,
                 value=self.__getitem__(token.value, token.type)
                 if token.type
-                in {TokenType.IDENTIFIER, TokenType.TABLE, TokenType.ALIAS, TokenType.LITERAL}
+                in {TokenType.TABLE, TokenType.TABLE_ALIAS, TokenType.ALIAS, TokenType.IDENTIFIER, TokenType.LITERAL}
                 else token.value,
                 space=token.space,
             )
@@ -142,9 +124,11 @@ def tokenize_sql(query: str) -> List[Token]:
     Token Types:
         - TokenType.FUNCTION: SQL functions (e.g., COUNT, SUM, UPPER).
         - TokenType.KEYWORD: Whole word SQL keywords (e.g., SELECT, FROM, WHERE).
+        - TokenType.TABLE: Table names following the FROM keyword.
         - TokenType.IDENTIFIER: Identifiers such as table or column names.
         - TokenType.ALIAS: Aliases for tables or columns.
         - TokenType.LITERAL: String and numeric literals.
+        - TokenType.TABLE_ALIAS: Table aliases used in the query.
         - TokenType.SYMBOL: Operators and punctuation outside of quotes.
         - TokenType.WHITESPACE: Whitespace characters (excluded from the result).
         - TokenType.COMMENT: SQL comments (e.g., -- comment or /* comment */).
@@ -182,6 +166,9 @@ def tokenize_sql(query: str) -> List[Token]:
         (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
         # (TokenType.IDENTIFIER, r"\b[a-zA-Z_][a-zA-Z0-9_]*\b(?!\s+AS\b)"),
 
+        # New pattern to capture table aliases used in the query - BREAKS ON TESTING
+        # IDs all schema aliases in: SELECT h.name, d.date FROM hire h, date d USING (id) ORDER BY h.name
+        # (TokenType.TABLE_ALIAS, r"\b\w+(?=\.)|(?<=\bFROM\s+\w+\s)\w+|(?<=\bJOIN\s+\w+\s)\w+|(?<=,\s*\w+\s)\w+"),
 
         (TokenType.LITERAL, r"\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?"),
         (TokenType.SYMBOL, OP_PATTERN),
