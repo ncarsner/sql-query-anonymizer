@@ -39,17 +39,12 @@ class Anonymizer:
         - get: Returns the placeholder for a given identifier, creating a new one if it's not already mapped.
         - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
     """
+
     def __init__(self):
         self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
         self.counters: dict[str, int] = Counter()
 
-    def __getitem__(self, identifier: str, token_type: TokenType) -> str:
-        # DEBUGGING PRINTS
-        print("getitem called")
-        print(f"Identifier: {identifier}, Type: {token_type}")
-        print("mappings: ", self.mappings)
-        print("counters: ", self.counters)
-
+    def _prefix(self, token_type: TokenType):
         type_prefixes = {
             TokenType.TABLE: "table",
             TokenType.ALIAS: "alias",
@@ -57,14 +52,23 @@ class Anonymizer:
             TokenType.IDENTIFIER: "identifier",
             TokenType.LITERAL: "literal",
         }
+        if token_type not in type_prefixes:
+            raise ValueError(f"Unsupported token type: {token_type}")
+        return type_prefixes[token_type]
 
-        if token_type in type_prefixes:
-            self.counters[identifier] += 1
-            prefix = type_prefixes[token_type]
-            self.mappings[token_type][identifier] = f"{prefix}_{self.counters[identifier]}"
-            return self.mappings[token_type][identifier]
-        
-        return identifier
+    def __getitem__(self, identifier: str, token_type: TokenType) -> str:
+        print(f"Identifier: {identifier}, Type: {token_type}")
+        print("mappings: ", self.mappings)
+        print("counters: ", self.counters)
+
+        m = self.mappings[token_type]
+        if identifier in m:
+            return m[identifier]
+
+        self.counters[token_type] += 1
+        prefix = f"{self._prefix(token_type)}_{self.counters[token_type]}"
+        m[identifier] = prefix
+        return prefix
 
     def anonymize(self, query: str) -> str:
         tokens = tokenize_sql(query)
@@ -73,7 +77,13 @@ class Anonymizer:
                 type=token.type,
                 value=self.__getitem__(token.value, token.type)
                 if token.type
-                in {TokenType.TABLE, TokenType.TABLE_ALIAS, TokenType.ALIAS, TokenType.IDENTIFIER, TokenType.LITERAL}
+                in {
+                    TokenType.TABLE,
+                    TokenType.TABLE_ALIAS,
+                    TokenType.ALIAS,
+                    TokenType.IDENTIFIER,
+                    TokenType.LITERAL,
+                }
                 else token.value,
                 space=token.space,
             )
@@ -152,24 +162,18 @@ def tokenize_sql(query: str) -> List[Token]:
     token_specification = [
         (TokenType.FUNCTION, r"\b(?:" + "|".join(escaped_functions) + r")\b"),
         (TokenType.KEYWORD, r"\b(?:" + "|".join(escaped_keywords) + r")\b"),
-
         (TokenType.TABLE, r"(?<=\bFROM\s)\w+"),
-
         # (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
         # Gets alias - needs to be before IDENTIFIER to avoid conflicts
         # Needs to not increment counter if called multiple times on same alias
         # (TokenType.ALIAS, r"(?:SELECT|)\b\w+(?=\.)|\b[a-zA-Z_]\b(?=WHERE|)"),
-
         # Match aliases in SELECT statements or after FROM/AS clauses
         (TokenType.ALIAS, r"\b(?:SELECT|FROM|AS)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b"),
-
         (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
         # (TokenType.IDENTIFIER, r"\b[a-zA-Z_][a-zA-Z0-9_]*\b(?!\s+AS\b)"),
-
         # New pattern to capture table aliases used in the query - BREAKS ON TESTING
         # IDs all schema aliases in: SELECT h.name, d.date FROM hire h, date d USING (id) ORDER BY h.name
         # (TokenType.TABLE_ALIAS, r"\b\w+(?=\.)|(?<=\bFROM\s+\w+\s)\w+|(?<=\bJOIN\s+\w+\s)\w+|(?<=,\s*\w+\s)\w+"),
-
         (TokenType.LITERAL, r"\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?"),
         (TokenType.SYMBOL, OP_PATTERN),
         (TokenType.WHITESPACE, r"\s+"),
