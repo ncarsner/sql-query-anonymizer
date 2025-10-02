@@ -14,6 +14,7 @@ class TokenType(Enum):
     TABLE_ALIAS = auto()
     ALIAS = auto()
     IDENTIFIER = auto()
+    # IDENTIFIER_ALIAS = auto()
     LITERAL = auto()
     SYMBOL = auto()
     WHITESPACE = auto()
@@ -29,13 +30,13 @@ class Token:
 
 
 class Anonymizer:
-    """A class to anonymize SQL identifiers (table names, column names, literals) in a SQL query
-    while preserving SQL keywords and functions.
+    """A class to anonymize SQL identifiers (table names, column names, literals) in a SQL query while preserving SQL keywords and functions.
     Usage:
         anonymizer = Anonymizer()
         anonymized_query = anonymizer.anonymize(sql_query)
     Methods:
         - __init__: Initializes the anonymizer with empty mappings and counters.
+        - _prefix: Returns the prefix string for a given token type.
         - get: Returns the placeholder for a given identifier, creating a new one if it's not already mapped.
         - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
     """
@@ -48,6 +49,7 @@ class Anonymizer:
         type_prefixes = {
             TokenType.TABLE: "table",
             TokenType.ALIAS: "alias",
+            # TokenType.IDENTIFIER_ALIAS: "identifier_alias",
             TokenType.TABLE_ALIAS: "table_alias",
             TokenType.IDENTIFIER: "identifier",
             TokenType.LITERAL: "literal",
@@ -79,9 +81,10 @@ class Anonymizer:
                 if token.type
                 in {
                     TokenType.TABLE,
-                    TokenType.TABLE_ALIAS,
-                    TokenType.ALIAS,
+                    # TokenType.TABLE_ALIAS,
+                    # TokenType.ALIAS,
                     TokenType.IDENTIFIER,
+                    # TokenType.IDENTIFIER_ALIAS,
                     TokenType.LITERAL,
                 }
                 else token.value,
@@ -163,17 +166,22 @@ def tokenize_sql(query: str) -> List[Token]:
         (TokenType.FUNCTION, r"\b(?:" + "|".join(escaped_functions) + r")\b"),
         (TokenType.KEYWORD, r"\b(?:" + "|".join(escaped_keywords) + r")\b"),
         (TokenType.TABLE, r"(?<=\bFROM\s)\w+"),
+
         # (TokenType.ALIAS, r"[a-zA-Z_][a-zA-Z0-9_]*\s+(?=\b(?:" + "|".join(escaped_keywords) + r")\b)"),
-        # Gets alias - needs to be before IDENTIFIER to avoid conflicts
-        # Needs to not increment counter if called multiple times on same alias
         # (TokenType.ALIAS, r"(?:SELECT|)\b\w+(?=\.)|\b[a-zA-Z_]\b(?=WHERE|)"),
         # Match aliases in SELECT statements or after FROM/AS clauses
-        (TokenType.ALIAS, r"\b(?:SELECT|FROM|AS)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b"),
+        # (TokenType.ALIAS, r"\b(?:SELECT|FROM|AS)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b"),
+
+        # (TokenType.IDENTIFIER_ALIAS, r"(?<=AS\s)(\w+)"),
+
+        ### CURRENTLY CAUSES TEST FAILURE ###
+        # (TokenType.TABLE_ALIAS, r"(?<=(FROM|JOIN)\s\w+\s)(\w+)"),
+
         (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
         # (TokenType.IDENTIFIER, r"\b[a-zA-Z_][a-zA-Z0-9_]*\b(?!\s+AS\b)"),
-        # New pattern to capture table aliases used in the query - BREAKS ON TESTING
-        # IDs all schema aliases in: SELECT h.name, d.date FROM hire h, date d USING (id) ORDER BY h.name
+
         # (TokenType.TABLE_ALIAS, r"\b\w+(?=\.)|(?<=\bFROM\s+\w+\s)\w+|(?<=\bJOIN\s+\w+\s)\w+|(?<=,\s*\w+\s)\w+"),
+
         (TokenType.LITERAL, r"\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?"),
         (TokenType.SYMBOL, OP_PATTERN),
         (TokenType.WHITESPACE, r"\s+"),
@@ -247,7 +255,7 @@ if __name__ == "__main__":
         processed_sample = preprocess_text(sample)
 
         print(f"Processed Text: {processed_sample}")
-        print(f"Anonymized Text: {anonymize_identifiers(processed_sample)}")
+        # print(f"Anonymized Text: {anonymize_identifiers(processed_sample)}")
 
         anonymizer = Anonymizer()
         anonymized_query = anonymizer.anonymize(processed_sample)
