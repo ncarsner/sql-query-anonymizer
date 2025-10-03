@@ -286,15 +286,32 @@ def test_anonymize_identifiers(input_text, expected_output):
 
 @pytest.mark.parametrize(
     "query, expected_output, expected_mapping_count, expected_mapping, expected_literal_count, expected_literals",
-    [  # not incrementing identifier counts correctly
+    [
         (
             "SELECT name, salary FROM employees WHERE salary > 50000;",
             "SELECT identifier_1 , identifier_2 FROM table_1 WHERE identifier_2 > literal_1 ;",
-            3,
+            2,
             {"name": "identifier_1", "salary": "identifier_2", "employees": "table_1"},
             1,
             {"50000": "literal_1"},
+        ),
+        (
+            "SELECT date, amount FROM orders WHERE amount >= 100 AND date = 5;",
+            "SELECT identifier_1 , identifier_2 FROM table_1 WHERE identifier_2 >= literal_1 AND identifier_1 = literal_2 ;",
+            2,
+            {"date": "identifier_1", "amount": "identifier_2", "orders": "table_1"},
+            2,
+            {"100": "literal_1", "5": "literal_2"},
+        ),
+        (
+            "SELECT id, name FROM employees WHERE dept IN (30,60,90) AND year(hire_date) = 2025;",
+            "SELECT identifier_1 , identifier_2 FROM table_1 WHERE identifier_3 IN ( literal_1 , literal_2 , literal_3 ) AND year ( identifier_4 ) = literal_4 ;",
+            4,
+            {"id": "identifier_1", "name": "identifier_2", "employees": "table_1"},
+            4,
+            {"30": "literal_1", "60": "literal_2", "90": "literal_3", "2025": "literal_4"},
         )
+
     ],
 )
 def test_anonymizer_class(
@@ -310,7 +327,16 @@ def test_anonymizer_class(
     actual = a.anonymize(query)
     assert actual == expected_output
 
-    # assert a.column_count == expected_mapping_count
-    # assert a.column_map == expected_mapping
-    # assert a.literal_count == expected_literal_count
-    # assert a.literal_map == expected_literals
+    assert a.counters[TokenType.IDENTIFIER] == expected_mapping_count
+    assert a.counters[TokenType.LITERAL] == expected_literal_count
+
+    # assert a.mappings["identifier"] == expected_mapping
+    # assert a.mappings["literal"] == expected_literals
+    # assert a.counters == {
+    #     "table": 1,
+    #     "table_alias": 0,
+    #     "alias": 0,
+    #     "identifier": 2,
+    #     "identifier_alias": 0,
+    #     "literal": 1,
+    # }
