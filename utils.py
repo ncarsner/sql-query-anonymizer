@@ -11,7 +11,9 @@ class TokenType(Enum):
     FUNCTION = auto()
     KEYWORD = auto()
     TABLE = auto()
+    TABLE_ALIAS = auto()
     IDENTIFIER = auto()
+    IDENTIFIER_ALIAS = auto()
     LITERAL = auto()
     SYMBOL = auto()
     WHITESPACE = auto()
@@ -45,10 +47,9 @@ class Anonymizer:
     def _prefix(self, token_type: TokenType):
         type_prefixes = {
             TokenType.TABLE: "table",
-            # TokenType.ALIAS: "alias",
-            # TokenType.IDENTIFIER_ALIAS: "identifier_alias",
-            # TokenType.TABLE_ALIAS: "table_alias",
+            TokenType.TABLE_ALIAS: "table_alias",
             TokenType.IDENTIFIER: "identifier",
+            TokenType.IDENTIFIER_ALIAS: "identifier_alias",
             TokenType.LITERAL: "literal",
         }
         if token_type not in type_prefixes:
@@ -57,8 +58,17 @@ class Anonymizer:
 
     def __getitem__(self, identifier: str, token_type: TokenType) -> str:
         print(f"Identifier: {identifier}, Type: {token_type}")
-        print("mappings: ", self.mappings)
-        print("counters: ", self.counters)
+
+        # Special handling for aliases - return as-is
+        if token_type in {TokenType.TABLE_ALIAS, TokenType.IDENTIFIER_ALIAS}:
+            # Check if this alias was already created from a table/identifier
+            if token_type == TokenType.TABLE_ALIAS:
+                for table_mapping in self.mappings[TokenType.TABLE].values():
+                    if identifier.lower() == table_mapping.split("_")[0].lower():
+                        return identifier  # Return original alias
+            elif token_type == TokenType.IDENTIFIER_ALIAS:
+                # Column aliases should always be returned as-is to maintain readability
+                return identifier
 
         m = self.mappings[token_type]
         if identifier in m:
@@ -71,21 +81,34 @@ class Anonymizer:
 
     def anonymize(self, query: str) -> str:
         tokens = tokenize_sql(query)
-        anonymized_tokens = [
-            Token(
-                type=token.type,
-                value=self.__getitem__(token.value, token.type)
-                if token.type
-                in {
-                    TokenType.TABLE,
-                    TokenType.IDENTIFIER,
-                    TokenType.LITERAL,
-                }
-                else token.value,
-                space=token.space,
-            )
+
+        # Build sets of aliases for reference
+        """
+        table_aliases = {
+            token.value.lower()
             for token in tokens
-        ]
+            if token.type == TokenType.TABLE_ALIAS
+        }
+        column_aliases = {
+            token.value.lower()
+            for token in tokens
+            if token.type == TokenType.IDENTIFIER_ALIAS
+        }
+        """
+
+        anonymized_tokens = []
+        for i, token in enumerate(tokens):
+            if token.type in {TokenType.TABLE, TokenType.IDENTIFIER, TokenType.LITERAL}:
+                anonymized_value = self.__getitem__(token.value, token.type)
+                anonymized_tokens.append(
+                    Token(token.type, anonymized_value, token.space)
+                )
+            elif token.type in {TokenType.TABLE_ALIAS, TokenType.IDENTIFIER_ALIAS}:
+                # Keep all aliases as-is for readability
+                anonymized_tokens.append(token)
+            else:
+                anonymized_tokens.append(token)
+
         return " ".join(token.value for token in anonymized_tokens)
 
 
@@ -160,12 +183,13 @@ def tokenize_sql(query: str) -> List[Token]:
         (TokenType.FUNCTION, r"\b(?:" + "|".join(escaped_functions) + r")\b"),
         (TokenType.KEYWORD, r"\b(?:" + "|".join(escaped_keywords) + r")\b"),
         (TokenType.TABLE, r"(?<=\bFROM\s)\w+"),
-        (TokenType.IDENTIFIER, r"[a-zA-Z_][a-zA-Z0-9_]*(\.?\w+)?"),
+        (
+            TokenType.TABLE_ALIAS,
+            r"(?<=FROM\s)\w+\s(\w+)"  # Alias after table
+            r"|(?<=\bJOIN\s)\w+\s(\w+)",
+        ),  # Alias after JOIN
+        (TokenType.IDENTIFIER, r"\b[a-zA-Z_][a-zA-Z0-9_]*\b"),
         (TokenType.LITERAL, r"\'[^\']*\'|\"[^\"]*\"|\d+(\.\d+)?"),
-
-        # (TokenType.IDENTIFIER_ALIAS, r"(?<=AS\s)\w+"),
-        # (TokenType.TABLE_ALIAS, r"(?<=(FROM|JOIN)\s\w+\s)\w+"),
-
         (TokenType.SYMBOL, OP_PATTERN),
         (TokenType.WHITESPACE, r"\s+"),
         (TokenType.UNKNOWN, r"."),
@@ -185,6 +209,72 @@ def tokenize_sql(query: str) -> List[Token]:
                 if token_type != TokenType.WHITESPACE:
                     tokens.append(Token(type=token_type, value=value, space=False))
                 break
+
+    return _post_process_tokens(tokens)
+
+
+def _post_process_tokens(tokens: List[Token]) -> List[Token]:
+    """Post-process tokens to identify table aliases, column aliases, and qualified identifiers."""
+    # processed_tokens = []
+    table_aliases = set()
+
+    # First pass: identify table aliases and column aliases
+    for i, token in enumerate(tokens):
+        # Detect table aliases (after FROM/JOIN)
+        if token.type == TokenType.TABLE and i + 1 < len(tokens):
+            next_token = tokens[i + 1]
+            if (
+                next_token.type == TokenType.IDENTIFIER
+                and next_token.value.upper() not in SQL_KEYWORDS
+                and next_token.value.upper() not in ALL_SQL_FUNCTIONS
+            ):
+                table_aliases.add(next_token.value.lower())
+                tokens[i + 1] = Token(
+                    TokenType.TABLE_ALIAS, next_token.value, next_token.space
+                )
+
+        # Detect column aliases (after AS keyword)
+        elif (
+            token.type == TokenType.KEYWORD
+            and token.value.upper() == "AS"
+            and i + 1 < len(tokens)
+        ):
+            next_token = tokens[i + 1]
+            if (
+                next_token.type == TokenType.IDENTIFIER
+                and next_token.value.upper() not in SQL_KEYWORDS
+                and next_token.value.upper() not in ALL_SQL_FUNCTIONS
+            ):
+                tokens[i + 1] = Token(
+                    TokenType.IDENTIFIER_ALIAS, next_token.value, next_token.space
+                )
+
+        # Detect implicit column aliases (identifier after column in SELECT)
+        elif token.type == TokenType.IDENTIFIER and i > 0 and i + 1 < len(tokens):
+            # Check if we're in SELECT context and this might be an implicit alias
+            prev_token = tokens[i - 1]
+            next_token = tokens[i + 1]
+
+            # Simple heuristic: if identifier follows another identifier/function and precedes comma/FROM
+            if (
+                prev_token.type in {TokenType.IDENTIFIER, TokenType.FUNCTION}
+                and next_token.value in {",", "FROM"}
+                and token.value.upper() not in SQL_KEYWORDS
+                and token.value.upper() not in ALL_SQL_FUNCTIONS
+            ):
+                tokens[i] = Token(TokenType.IDENTIFIER_ALIAS, token.value, token.space)
+
+    # Second pass: identify table alias references (alias.column pattern)
+    for i, token in enumerate(tokens):
+        if (
+            token.type == TokenType.IDENTIFIER
+            and token.value.lower() in table_aliases
+            and i + 1 < len(tokens)
+            and tokens[i + 1].type == TokenType.SYMBOL
+            and tokens[i + 1].value == "."
+        ):
+            # This is a table alias reference - mark it as TABLE_ALIAS to preserve it
+            tokens[i] = Token(TokenType.TABLE_ALIAS, token.value, token.space)
 
     return tokens
 

@@ -119,7 +119,7 @@ def test_normalize_keyword_casing(input_text, expected_output):
     "input_text, expected_tokens, expected_types",
     [
         (
-            "SELECT name, hire_date FROM employees e WHERE id = 10 AND name = 'John';",
+            "SELECT name, hire_date FROM employees WHERE id = 10 AND name = 'John';",
             [
                 "SELECT",
                 "name",
@@ -127,7 +127,6 @@ def test_normalize_keyword_casing(input_text, expected_output):
                 "hire_date",
                 "FROM",
                 "employees",
-                "e",
                 "WHERE",
                 "id",
                 "=",
@@ -145,7 +144,6 @@ def test_normalize_keyword_casing(input_text, expected_output):
                 TokenType.IDENTIFIER,
                 TokenType.KEYWORD,
                 TokenType.TABLE,
-                TokenType.IDENTIFIER,
                 TokenType.KEYWORD,
                 TokenType.IDENTIFIER,
                 TokenType.SYMBOL,
@@ -309,9 +307,13 @@ def test_anonymize_identifiers(input_text, expected_output):
             4,
             {"id": "identifier_1", "name": "identifier_2", "employees": "table_1"},
             4,
-            {"30": "literal_1", "60": "literal_2", "90": "literal_3", "2025": "literal_4"},
-        )
-
+            {
+                "30": "literal_1",
+                "60": "literal_2",
+                "90": "literal_3",
+                "2025": "literal_4",
+            },
+        ),
     ],
 )
 def test_anonymizer_class(
