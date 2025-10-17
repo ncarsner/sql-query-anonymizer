@@ -60,7 +60,7 @@ class Anonymizer:
         print(f"Identifier: {identifier}, Type: {token_type}")
 
         # Special handling for aliases - return as-is
-        if token_type in {TokenType.TABLE_ALIAS}:
+        if token_type == TokenType.TABLE_ALIAS:
             # Check if this alias was already created from a table/identifier
             if token_type == TokenType.TABLE_ALIAS:
                 for table_mapping in self.mappings[TokenType.TABLE].values():
@@ -81,19 +81,13 @@ class Anonymizer:
 
     def anonymize(self, query: str) -> str:
         tokens = tokenize_sql(query)
-
-        # Build sets of aliases for reference
-        # table_aliases = {token.value.lower() for token in tokens 
-        #                 if token.type == TokenType.TABLE_ALIAS}
-        # column_aliases = {token.value.lower() for token in tokens 
-        #                  if token.type == TokenType.IDENTIFIER_ALIAS}
     
         anonymized_tokens = []
         for i, token in enumerate(tokens):
             if token.type in {TokenType.TABLE, TokenType.IDENTIFIER, TokenType.LITERAL}:
                 anonymized_value = self.__getitem__(token.value, token.type)
                 anonymized_tokens.append(Token(token.type, anonymized_value, token.space))
-            elif token.type in {TokenType.TABLE_ALIAS}:
+            elif token.type == TokenType.TABLE_ALIAS:
                 # Keep all aliases as-is for readability
                 anonymized_tokens.append(token)
             else:
@@ -306,7 +300,6 @@ if __name__ == "__main__":
         # " SELECT p.department as dept  from personnel p where id = 10",
         # "SELECT p.name as Employee FROM personnel p WHERE p.id = 10;",
         "SELECT p.name, c.id from personnel p JOIN customers c ON p.id = c.person_id WHERE p.age > 30;",
-        # expected: SELECT alias_1.identifier_1 AS identifier_3 FROM identifier_4 identifier_5 WHERE identifier_4.identifier_6 = 10 ;
     ]
     for sample in sample_text:
         print(f"\nOriginal Text: {sample}")
