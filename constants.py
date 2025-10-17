@@ -68,7 +68,7 @@ SQL_DATE_FUNCTIONS = {
     "EXTRACT",
     "TO_DATE",
     "TO_TIMESTAMP",
-    "AGE",
+    # "AGE",
     "TIMESTAMPDIFF",
     "TIMESTAMPADD",
     "DAY",
