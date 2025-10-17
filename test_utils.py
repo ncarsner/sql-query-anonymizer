@@ -288,7 +288,6 @@ def test_preprocess_text(input_text, expected_output):
 )
 def test_anonymize_identifiers(input_text, expected_output):
     assert anonymize_identifiers(input_text) == expected_output
-    # pass
 
 
 @pytest.mark.parametrize(
