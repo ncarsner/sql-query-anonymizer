@@ -80,7 +80,7 @@ class Anonymizer:
         tokens = tokenize_sql(query)
 
         anonymized_tokens = []
-        for _, token in enumerate(tokens):
+        for token in tokens:
             if token.type in {TokenType.TABLE, TokenType.IDENTIFIER, TokenType.LITERAL}:
                 anonymized_value = self.__getitem__(token.value, token.type)
                 anonymized_tokens.append(
