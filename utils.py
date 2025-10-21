@@ -60,15 +60,12 @@ class Anonymizer:
         print(f"Identifier: {identifier}, Type: {token_type}")
 
         # Special handling for aliases - return as-is
-        if token_type == TokenType.TABLE_ALIAS:
+        if token_type is TokenType.TABLE_ALIAS:
             # Check if this alias was already created from a table/identifier
-            if token_type == TokenType.TABLE_ALIAS:
-                for table_mapping in self.mappings[TokenType.TABLE].values():
-                    if identifier.lower() == table_mapping.split("_")[0].lower():
-                        return identifier  # Return original alias
-            elif token_type == TokenType.IDENTIFIER_ALIAS:
-                # Column aliases should always be returned as-is to maintain readability
-                return identifier
+            for table_mapping in self.mappings[TokenType.TABLE].values():
+                if identifier.lower() == table_mapping.split("_")[0].lower():
+                    return identifier  # Return original alias
+            return identifier
 
         m = self.mappings[token_type]
         if identifier in m:
@@ -81,15 +78,14 @@ class Anonymizer:
 
     def anonymize(self, query: str) -> str:
         tokens = tokenize_sql(query)
-    
+
         anonymized_tokens = []
-        for i, token in enumerate(tokens):
+        for _, token in enumerate(tokens):
             if token.type in {TokenType.TABLE, TokenType.IDENTIFIER, TokenType.LITERAL}:
                 anonymized_value = self.__getitem__(token.value, token.type)
-                anonymized_tokens.append(Token(token.type, anonymized_value, token.space))
-            elif token.type == TokenType.TABLE_ALIAS:
-                # Keep all aliases as-is for readability
-                anonymized_tokens.append(token)
+                anonymized_tokens.append(
+                    Token(token.type, anonymized_value, token.space)
+                )
             else:
                 anonymized_tokens.append(token)
 
@@ -139,10 +135,10 @@ def tokenize_sql(query: str) -> List[Token]:
         - TokenType.FUNCTION: SQL functions (e.g., COUNT, SUM, UPPER).
         - TokenType.KEYWORD: Whole word SQL keywords (e.g., SELECT, FROM, WHERE).
         - TokenType.TABLE: Table names following the FROM keyword.
-        - TokenType.IDENTIFIER: Identifiers such as table or column names.
-        - TokenType.ALIAS: Aliases for tables or columns.
-        - TokenType.LITERAL: String and numeric literals.
         - TokenType.TABLE_ALIAS: Table aliases used in the query.
+        - TokenType.IDENTIFIER: Identifiers such as table or column names.
+        - TokenType.IDENTIFIER_ALIAS: Aliases for columns.
+        - TokenType.LITERAL: String and numeric literals.
         - TokenType.SYMBOL: Operators and punctuation outside of quotes.
         - TokenType.WHITESPACE: Whitespace characters (excluded from the result).
         - TokenType.COMMENT: SQL comments (e.g., -- comment or /* comment */).
@@ -268,33 +264,8 @@ def preprocess_text(text: str) -> str:
     return text
 
 
-def anonymize_identifiers(text: str) -> str:
-    tokens = tokenize_sql(text)
-    anonymized_tokens = []
-    identifier_count = 0
-    identifier_map = {}
-
-    for token in tokens:
-        if token.type == TokenType.IDENTIFIER:
-            if token.value not in identifier_map:
-                identifier_count += 1
-                identifier_map[token.value] = f"identifier_{identifier_count}"
-            anonymized_tokens.append(
-                Token(
-                    type=token.type,
-                    value=identifier_map[token.value],
-                    space=token.space,
-                )
-            )
-        else:
-            anonymized_tokens.append(token)
-
-    return " ".join(token.value for token in anonymized_tokens)
-
-
 if __name__ == "__main__":
     sample_text = [
-        # "  This   is not    a   Sample as tXt.  ",
         # " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
         # "  select * from  orders where   column in (1, 2, 3);",
         # " SELECT p.department as dept  from personnel p where id = 10",
@@ -306,7 +277,6 @@ if __name__ == "__main__":
         processed_sample = preprocess_text(sample)
 
         print(f"Processed Text: {processed_sample}")
-        # print(f"Anonymized Text: {anonymize_identifiers(processed_sample)}")
 
         anonymizer = Anonymizer()
         anonymized_query = anonymizer.anonymize(processed_sample)
