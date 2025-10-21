@@ -3,7 +3,6 @@ import pytest
 from utils import (
     Anonymizer,
     TokenType,
-    # anonymize_identifiers,
     collapse_extra_spaces,
     normalize_casing,
     normalize_keyword_casing,
@@ -267,28 +266,6 @@ def test_tokenize_sql(input_text, expected_tokens, expected_types):
 )
 def test_preprocess_text(input_text, expected_output):
     assert preprocess_text(input_text) == expected_output
-
-
-@pytest.mark.parametrize( # outdated test case
-    "input_text, expected_output",
-    [
-        # (
-        #     "SELECT name, hire_date FROM employees e WHERE id = 10 AND name = 'John';",
-        #     "SELECT identifier_1 , identifier_2 FROM table_1 e WHERE identifier_3 = literal_1 AND identifier_1 = literal_2 ;",
-        # ),
-        # (
-        #     "INSERT INTO orders (id, amount) VALUES (1, 100);",
-        #     "INSERT INTO table_1 ( identifier_1 , identifier_2 ) VALUES ( 1 , 100 ) ;",
-        # ),
-        # (
-        #     "SELECT p.name as Employee FROM personnel p WHERE p.id = 10;",
-        #     "SELECT p . identifier_1 as Employee FROM table_1 p WHERE p . identifier_2 = 10 ;",
-        # ),
-    ],
-)
-def test_anonymize_identifiers(input_text, expected_output):
-    assert anonymize_identifiers(input_text) == expected_output
-    ...
 
 
 @pytest.mark.parametrize(
