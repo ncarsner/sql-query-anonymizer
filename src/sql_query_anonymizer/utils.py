@@ -282,4 +282,5 @@ def main():
         anonymized_query = anonymizer.anonymize(processed_sample)
         print(f"w/ Anonymizer Class: {anonymized_query}")
 
-main()
+if __name__ == "__main__":
+    main()
