@@ -1,6 +1,6 @@
 import pytest
 
-from utils import (
+from src.sql_query_anonymizer.utils import (
     Anonymizer,
     TokenType,
     collapse_extra_spaces,
