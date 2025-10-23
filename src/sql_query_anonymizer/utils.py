@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List
 
-from constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
+from .constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 
 
 class TokenType(Enum):
@@ -264,7 +264,7 @@ def preprocess_text(text: str) -> str:
     return text
 
 
-if __name__ == "__main__":
+def main():
     sample_text = [
         # " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
         # "  select * from  orders where   column in (1, 2, 3);",
@@ -281,3 +281,6 @@ if __name__ == "__main__":
         anonymizer = Anonymizer()
         anonymized_query = anonymizer.anonymize(processed_sample)
         print(f"w/ Anonymizer Class: {anonymized_query}")
+
+if __name__ == "__main__":
+    main()

@@ -1,7 +1,7 @@
 [project]
 name = "sql-query-anonymizer"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tool for anonymizing RDMS schema data in SQL queries."
 readme = "README.md"
 authors = [
     { name = "Nicholas Carsner", email = "nicholascarsner@gmail.com" }
@@ -10,7 +10,7 @@ requires-python = ">=3.13"
 dependencies = []
 
 [project.scripts]
-sql-query-anonymizer = "sql_query_anonymizer:main"
+sql-query-anonymizer = "sql_query_anonymizer.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.8.4,<0.9.0"]
@@ -19,4 +19,14 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py", "*_test.py", "tests.py"]
+
+[tool.coverage.run]
+omit = [
+    "tests/*",
+    "src/sql_query_anonymizer/__init__.py"
 ]
