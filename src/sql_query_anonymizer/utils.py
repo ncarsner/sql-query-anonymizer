@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List
+import json
 
 from .constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 
@@ -43,6 +44,7 @@ class Anonymizer:
     def __init__(self):
         self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
         self.counters: dict[TokenType, int] = Counter()
+        self.reverse_mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
 
     def _prefix(self, token_type: TokenType):
         type_prefixes = {
@@ -57,7 +59,7 @@ class Anonymizer:
         return type_prefixes[token_type]
 
     def __getitem__(self, identifier: str, token_type: TokenType) -> str:
-        print(f"Identifier: {identifier}, Type: {token_type}")
+        # print(f"Identifier: {identifier}, Type: {token_type}")
 
         # Special handling for aliases - return as-is
         if token_type is TokenType.TABLE_ALIAS:
@@ -74,7 +76,11 @@ class Anonymizer:
         self.counters[token_type] += 1
         prefix = f"{self._prefix(token_type)}_{self.counters[token_type]}"
         m[identifier] = prefix
+
+        self.reverse_mappings[token_type][prefix] = identifier
+
         return prefix
+
 
     def anonymize(self, query: str) -> str:
         tokens = tokenize_sql(query)
@@ -91,6 +97,47 @@ class Anonymizer:
 
         return " ".join(token.value for token in anonymized_tokens)
 
+    def de_anonymize(self, anonymized_query: str) -> str:
+        """De-anonymize a previously anonymized SQL query using stored mappings."""
+        tokens = tokenize_sql(anonymized_query)
+        
+        de_anonymized_tokens = []
+        for token in tokens:
+            if token.type in {TokenType.TABLE, TokenType.IDENTIFIER, TokenType.LITERAL}:
+                original_value = self.reverse_mappings[token.type].get(token.value)
+                if original_value:
+                    de_anonymized_tokens.append(Token(token.type, original_value, token.space))
+                else:
+                    de_anonymized_tokens.append(token)
+            else:
+                de_anonymized_tokens.append(token)
+        
+        return " ".join(token.value for token in de_anonymized_tokens)
+
+    def get_mappings(self) -> dict:
+        """Get the current anonymization mappings."""
+        return {
+            "forward": {token_type.name: dict(mapping) for token_type, mapping in self.mappings.items()},
+            "reverse": {token_type.name: dict(mapping) for token_type, mapping in self.reverse_mappings.items()}
+        }
+
+    def load_mappings(self, mappings: dict):
+        """Load previously saved mappings to enable de-anonymization."""
+        self.mappings.clear()
+        self.reverse_mappings.clear()
+        
+        if "forward" in mappings:
+            for token_type_name, mapping in mappings["forward"].items():
+                token_type = TokenType[token_type_name]
+                self.mappings[token_type] = dict(mapping)
+                if mapping:
+                    max_num = max(int(v.split("_")[-1]) for v in mapping.values() if "_" in v and v.split("_")[-1].isdigit())
+                    self.counters[token_type] = max_num
+        
+        if "reverse" in mappings:
+            for token_type_name, mapping in mappings["reverse"].items():
+                token_type = TokenType[token_type_name]
+                self.reverse_mappings[token_type] = dict(mapping)
 
 def normalize_casing(text: str) -> str:
     def ignore_within_quotes(match):
@@ -190,8 +237,6 @@ def tokenize_sql(query: str) -> List[Token]:
 
 
 def _post_process_tokens(tokens: List[Token]) -> List[Token]:
-    """Post-process tokens to identify table aliases, column aliases, and qualified identifiers."""
-    # processed_tokens = []
     table_aliases = set()
 
     # First pass: identify table aliases and column aliases
@@ -227,7 +272,7 @@ def _post_process_tokens(tokens: List[Token]) -> List[Token]:
 
         # Detect implicit column aliases (identifier after column in SELECT)
         elif token.type == TokenType.IDENTIFIER and i > 0 and i + 1 < len(tokens):
-            # Check if we're in SELECT context and this might be an implicit alias
+            # Check if an implicit alias
             prev_token = tokens[i - 1]
             next_token = tokens[i + 1]
 
@@ -263,6 +308,10 @@ def preprocess_text(text: str) -> str:
     text = " ".join(token.value for token in tokens)
     return text
 
+def postprocess_text(text: str) -> str:
+    text = re.sub(r"\s+\.\s+", ".", text)
+    return text
+
 
 def main():
     sample_text = [
@@ -271,16 +320,18 @@ def main():
         # " SELECT p.department as dept  from personnel p where id = 10",
         # "SELECT p.name as Employee FROM personnel p WHERE p.id = 10;",
         "SELECT p.name, c.id from personnel p JOIN customers c ON p.id = c.person_id WHERE p.age > 30;",
+        "SELECT COUNT(*) as total_orders FROM orders o WHERE order_date >= '2023-01-01';",
     ]
     for sample in sample_text:
-        print(f"\nOriginal Text: {sample}")
+        print(f"\nOriginal Text:   {sample}")
         processed_sample = preprocess_text(sample)
 
-        print(f"Processed Text: {processed_sample}")
+        print(f"Processed Text:  {processed_sample}")
 
         anonymizer = Anonymizer()
         anonymized_query = anonymizer.anonymize(processed_sample)
-        print(f"w/ Anonymizer Class: {anonymized_query}")
+        postprocessed_query = postprocess_text(anonymized_query)
+        print(f"Anonymized Text: {postprocessed_query}")
 
 if __name__ == "__main__":
     main()
