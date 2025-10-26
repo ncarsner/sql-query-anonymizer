@@ -272,7 +272,9 @@ def _post_process_tokens(tokens: List[Token]) -> List[Token]:
 
         # Detect implicit column aliases (identifier after column in SELECT)
         elif token.type == TokenType.IDENTIFIER and i > 0 and i + 1 < len(tokens):
-            # Check if an implicit alias
+            # Check if this identifier is acting as an implicit alias in a SELECT statement.
+            # Specifically, this occurs when the identifier follows another identifier or function
+            # and precedes a comma or the FROM keyword, indicating an alias for the preceding column/expression.
             prev_token = tokens[i - 1]
             next_token = tokens[i + 1]
 
