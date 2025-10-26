@@ -3,8 +3,6 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List
-import json
-
 from .constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 
 
