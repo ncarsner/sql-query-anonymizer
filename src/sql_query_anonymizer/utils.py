@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List
+import json
 from .constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 
 
@@ -18,6 +19,8 @@ class TokenType(Enum):
     WHITESPACE = auto()
     COMMENT = auto()
     UNKNOWN = auto()
+
+TYPE_PREFIXES = {TokenType.TABLE, TokenType.IDENTIFIER, TokenType.LITERAL}
 
 
 @dataclass
@@ -47,9 +50,7 @@ class Anonymizer:
     def _prefix(self, token_type: TokenType):
         type_prefixes = {
             TokenType.TABLE: "table",
-            TokenType.TABLE_ALIAS: "table_alias",
             TokenType.IDENTIFIER: "identifier",
-            # TokenType.IDENTIFIER_ALIAS: "identifier_alias",
             TokenType.LITERAL: "literal",
         }
         if token_type not in type_prefixes:
@@ -85,7 +86,7 @@ class Anonymizer:
 
         anonymized_tokens = []
         for token in tokens:
-            if token.type in {TokenType.TABLE, TokenType.IDENTIFIER, TokenType.LITERAL}:
+            if token.type in TYPE_PREFIXES:
                 anonymized_value = self.__getitem__(token.value, token.type)
                 anonymized_tokens.append(
                     Token(token.type, anonymized_value, token.space)
@@ -101,41 +102,57 @@ class Anonymizer:
         
         de_anonymized_tokens = []
         for token in tokens:
-            if token.type in {TokenType.TABLE, TokenType.IDENTIFIER, TokenType.LITERAL}:
-                original_value = self.reverse_mappings[token.type].get(token.value)
-                if original_value:
-                    de_anonymized_tokens.append(Token(token.type, original_value, token.space))
-                else:
-                    de_anonymized_tokens.append(token)
+            # Check if this token value exists in any of the reverse mappings
+            original_value = None
+            original_type = None
+            
+            # Check all TYPE_PREFIXES for the token value, regardless of current token type
+            for check_type in TYPE_PREFIXES:
+                if token.value in self.reverse_mappings[check_type]:
+                    original_value = self.reverse_mappings[check_type][token.value]
+                    original_type = check_type
+                    break
+            
+            if original_value is not None:
+                de_anonymized_tokens.append(Token(original_type, original_value, token.space))
             else:
                 de_anonymized_tokens.append(token)
         
         return " ".join(token.value for token in de_anonymized_tokens)
 
-    def get_mappings(self) -> dict:
-        """Get the current anonymization mappings."""
-        return {
-            "forward": {token_type.name: dict(mapping) for token_type, mapping in self.mappings.items()},
-            "reverse": {token_type.name: dict(mapping) for token_type, mapping in self.reverse_mappings.items()}
+    """
+    def save_mappings(self, filepath: str) -> None:        
+        mappings_data = {
+            "mappings": {str(k): v for k, v in self.mappings.items()},
+            "reverse_mappings": {str(k): v for k, v in self.reverse_mappings.items()},
+            "counters": {str(k): v for k, v in self.counters.items()}
         }
+        
+        with open(filepath, 'w') as f:
+            json.dump(mappings_data, f, indent=2)
 
-    def load_mappings(self, mappings: dict):
-        """Load previously saved mappings to enable de-anonymization."""
-        self.mappings.clear()
-        self.reverse_mappings.clear()
+    def load_mappings(self, filepath: str) -> None:        
+        with open(filepath, 'r') as f:
+            loaded_data = json.load(f)
         
-        if "forward" in mappings:
-            for token_type_name, mapping in mappings["forward"].items():
-                token_type = TokenType[token_type_name]
-                self.mappings[token_type] = dict(mapping)
-                if mapping:
-                    max_num = max(int(v.split("_")[-1]) for v in mapping.values() if "_" in v and v.split("_")[-1].isdigit())
-                    self.counters[token_type] = max_num
+        # Clear existing mappings
+        self.mappings = defaultdict(dict)
+        self.reverse_mappings = defaultdict(dict)
+        self.counters = Counter()
         
-        if "reverse" in mappings:
-            for token_type_name, mapping in mappings["reverse"].items():
-                token_type = TokenType[token_type_name]
-                self.reverse_mappings[token_type] = dict(mapping)
+        # Convert string keys back to TokenType
+        for token_type_str, mapping in loaded_data["mappings"].items():
+            token_type = getattr(TokenType, token_type_str.split('.')[1])
+            self.mappings[token_type] = mapping
+        
+        for token_type_str, mapping in loaded_data["reverse_mappings"].items():
+            token_type = getattr(TokenType, token_type_str.split('.')[1])
+            self.reverse_mappings[token_type] = mapping
+        
+        for token_type_str, count in loaded_data["counters"].items():
+            token_type = getattr(TokenType, token_type_str.split('.')[1])
+            self.counters[token_type] = count
+        """
 
 def normalize_casing(text: str) -> str:
     def ignore_within_quotes(match):
@@ -270,9 +287,6 @@ def _post_process_tokens(tokens: List[Token]) -> List[Token]:
 
         # Detect implicit column aliases (identifier after column in SELECT)
         elif token.type == TokenType.IDENTIFIER and i > 0 and i + 1 < len(tokens):
-            # Check if this identifier is acting as an implicit alias in a SELECT statement.
-            # Specifically, this occurs when the identifier follows another identifier or function
-            # and precedes a comma or the FROM keyword, indicating an alias for the preceding column/expression.
             prev_token = tokens[i - 1]
             next_token = tokens[i + 1]
 
