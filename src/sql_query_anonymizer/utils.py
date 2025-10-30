@@ -119,9 +119,10 @@ class Anonymizer:
                 de_anonymized_tokens.append(token)
         
         return " ".join(token.value for token in de_anonymized_tokens)
-
+    
+    
     """
-    def save_mappings(self, filepath: str) -> None:        
+    def save_mappings_to_json(self, filepath: str) -> None:
         mappings_data = {
             "mappings": {str(k): v for k, v in self.mappings.items()},
             "reverse_mappings": {str(k): v for k, v in self.reverse_mappings.items()},
@@ -131,7 +132,7 @@ class Anonymizer:
         with open(filepath, 'w') as f:
             json.dump(mappings_data, f, indent=2)
 
-    def load_mappings(self, filepath: str) -> None:        
+    def load_mappings_from_json(self, filepath: str) -> None:
         with open(filepath, 'r') as f:
             loaded_data = json.load(f)
         
@@ -152,7 +153,51 @@ class Anonymizer:
         for token_type_str, count in loaded_data["counters"].items():
             token_type = getattr(TokenType, token_type_str.split('.')[1])
             self.counters[token_type] = count
-        """
+            self.reverse_mappings[token_type] = mapping
+        
+        for token_type_str, count in loaded_data["counters"].items():
+            token_type = getattr(TokenType, token_type_str.split('.')[1])
+            self.counters[token_type] = count
+    """
+
+    def quantify_table_aliases_before_periods(self, query: str) -> dict:
+        tokens = tokenize_sql(query)
+        
+        aliases_before_periods = []
+        formal_table_aliases = set()
+        
+        # Find formal table aliases (declared after FROM/JOIN/INTO)
+        for i, token in enumerate(tokens):
+            if (
+                token.type == TokenType.TABLE
+                and i + 1 < len(tokens)
+                and tokens[i + 1].type in {TokenType.IDENTIFIER, TokenType.TABLE_ALIAS}
+            ):
+                formal_table_aliases.add(tokens[i + 1].value.lower())
+        
+        # Find all identifiers that precede periods
+        for i, token in enumerate(tokens):
+            if (
+                i + 1 < len(tokens)
+                and tokens[i + 1].type == TokenType.SYMBOL
+                and tokens[i + 1].value == "."
+                and token.type in {TokenType.IDENTIFIER, TokenType.TABLE_ALIAS}
+            ):
+                aliases_before_periods.append({
+                    'alias': token.value,
+                    'position': i,
+                    'is_formal_alias': token.value.lower() in formal_table_aliases,
+                    'token_type': token.type.name
+                })
+        
+        return {
+            'total_aliases_before_periods': len(aliases_before_periods),
+            'formal_aliases_count': len([a for a in aliases_before_periods if a['is_formal_alias']]),
+            'informal_aliases_count': len([a for a in aliases_before_periods if not a['is_formal_alias']]),
+            'aliases_detail': aliases_before_periods,
+            'unique_aliases': list(set(a['alias'].lower() for a in aliases_before_periods))
+        }
+
 
 def normalize_casing(text: str) -> str:
     def ignore_within_quotes(match):
@@ -253,10 +298,21 @@ def tokenize_sql(query: str) -> List[Token]:
 
 def _post_process_tokens(tokens: List[Token]) -> List[Token]:
     table_aliases = set()
+    aliases_before_periods = set()
 
-    # First pass: identify table aliases and column aliases
+    # First pass: identify all identifiers that precede literal periods
+    # This is the key enhancement to quantify table aliases before periods
     for i, token in enumerate(tokens):
-        # Detect table aliases (after FROM/JOIN)
+        if (
+            token.type == TokenType.IDENTIFIER
+            and i + 1 < len(tokens)
+            and tokens[i + 1].type == TokenType.SYMBOL
+            and tokens[i + 1].value == "."
+        ):
+            aliases_before_periods.add(token.value.lower())
+
+    # Second pass: identify formal table aliases (after FROM/JOIN/INTO keywords)
+    for i, token in enumerate(tokens):
         if token.type == TokenType.TABLE and i + 1 < len(tokens):
             next_token = tokens[i + 1]
             if (
@@ -299,17 +355,21 @@ def _post_process_tokens(tokens: List[Token]) -> List[Token]:
             ):
                 tokens[i] = Token(TokenType.IDENTIFIER_ALIAS, token.value, token.space)
 
-    # Second pass: identify table alias references (alias.column pattern)
+    # Third pass: identify table alias references with enhanced logic
+    # This includes both formally declared aliases and any identifier that precedes a period
     for i, token in enumerate(tokens):
         if (
             token.type == TokenType.IDENTIFIER
-            and token.value.lower() in table_aliases
             and i + 1 < len(tokens)
             and tokens[i + 1].type == TokenType.SYMBOL
             and tokens[i + 1].value == "."
         ):
-            # This is a table alias reference - mark it as TABLE_ALIAS to preserve it
-            tokens[i] = Token(TokenType.TABLE_ALIAS, token.value, token.space)
+            # If it's a formally declared alias OR if it precedes a period, treat as table alias
+            if (
+                token.value.lower() in table_aliases
+                or token.value.lower() in aliases_before_periods
+            ):
+                tokens[i] = Token(TokenType.TABLE_ALIAS, token.value, token.space)
 
     return tokens
 
@@ -327,6 +387,21 @@ def postprocess_text(text: str) -> str:
     return text
 
 
+def read_sql_file(filepath: str) -> str:
+    """Read SQL file and return as string, ignoring comments starting with '--'."""
+    with open(filepath, 'r') as f:
+        sql_statement = f.read()
+    
+    # Ignore lines that start with '--' (SQL comments)
+    lines = sql_statement.split('\n')
+    filtered_lines = []
+    for line in lines:
+        if line.strip().startswith('--'):
+            continue
+        filtered_lines.append(line)
+    
+    return ''.join(filtered_lines).strip().replace('\n', ' ')
+
 def main():
     sample_text = [
         # " select name, hire_date  from   customers   where  id =  10 and  name = ' John'  ",
@@ -336,6 +411,11 @@ def main():
         "SELECT p.name, c.id from personnel p JOIN customers c ON p.id = c.person_id WHERE p.age > 30;",
         "SELECT COUNT(*) as total_orders FROM orders o WHERE order_date >= '2023-01-01';",
     ]
+
+    sql_file_statement = read_sql_file('./data/_raw/messy_sql_1.sql')
+    # sql_file_statement = read_sql_file('./data/_raw/messy_sql_2.sql')
+    sample_text.append(sql_file_statement)
+
     for sample in sample_text:
         print(f"\nOriginal Text:   {sample}")
         processed_sample = preprocess_text(sample)
