@@ -3,7 +3,6 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import List
-import json
 from .constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 
 
@@ -97,7 +96,6 @@ class Anonymizer:
         return " ".join(token.value for token in anonymized_tokens)
 
     def de_anonymize(self, anonymized_query: str) -> str:
-        """De-anonymize a previously anonymized SQL query using stored mappings."""
         tokens = tokenize_sql(anonymized_query)
         
         de_anonymized_tokens = []
@@ -120,83 +118,6 @@ class Anonymizer:
         
         return " ".join(token.value for token in de_anonymized_tokens)
     
-    
-    """
-    def save_mappings_to_json(self, filepath: str) -> None:
-        mappings_data = {
-            "mappings": {str(k): v for k, v in self.mappings.items()},
-            "reverse_mappings": {str(k): v for k, v in self.reverse_mappings.items()},
-            "counters": {str(k): v for k, v in self.counters.items()}
-        }
-        
-        with open(filepath, 'w') as f:
-            json.dump(mappings_data, f, indent=2)
-
-    def load_mappings_from_json(self, filepath: str) -> None:
-        with open(filepath, 'r') as f:
-            loaded_data = json.load(f)
-        
-        # Clear existing mappings
-        self.mappings = defaultdict(dict)
-        self.reverse_mappings = defaultdict(dict)
-        self.counters = Counter()
-        
-        # Convert string keys back to TokenType
-        for token_type_str, mapping in loaded_data["mappings"].items():
-            token_type = getattr(TokenType, token_type_str.split('.')[1])
-            self.mappings[token_type] = mapping
-        
-        for token_type_str, mapping in loaded_data["reverse_mappings"].items():
-            token_type = getattr(TokenType, token_type_str.split('.')[1])
-            self.reverse_mappings[token_type] = mapping
-        
-        for token_type_str, count in loaded_data["counters"].items():
-            token_type = getattr(TokenType, token_type_str.split('.')[1])
-            self.counters[token_type] = count
-            self.reverse_mappings[token_type] = mapping
-        
-        for token_type_str, count in loaded_data["counters"].items():
-            token_type = getattr(TokenType, token_type_str.split('.')[1])
-            self.counters[token_type] = count
-    """
-
-    def quantify_table_aliases_before_periods(self, query: str) -> dict:
-        tokens = tokenize_sql(query)
-        
-        aliases_before_periods = []
-        formal_table_aliases = set()
-        
-        # Find formal table aliases (declared after FROM/JOIN/INTO)
-        for i, token in enumerate(tokens):
-            if (
-                token.type == TokenType.TABLE
-                and i + 1 < len(tokens)
-                and tokens[i + 1].type in {TokenType.IDENTIFIER, TokenType.TABLE_ALIAS}
-            ):
-                formal_table_aliases.add(tokens[i + 1].value.lower())
-        
-        # Find all identifiers that precede periods
-        for i, token in enumerate(tokens):
-            if (
-                i + 1 < len(tokens)
-                and tokens[i + 1].type == TokenType.SYMBOL
-                and tokens[i + 1].value == "."
-                and token.type in {TokenType.IDENTIFIER, TokenType.TABLE_ALIAS}
-            ):
-                aliases_before_periods.append({
-                    'alias': token.value,
-                    'position': i,
-                    'is_formal_alias': token.value.lower() in formal_table_aliases,
-                    'token_type': token.type.name
-                })
-        
-        return {
-            'total_aliases_before_periods': len(aliases_before_periods),
-            'formal_aliases_count': len([a for a in aliases_before_periods if a['is_formal_alias']]),
-            'informal_aliases_count': len([a for a in aliases_before_periods if not a['is_formal_alias']]),
-            'aliases_detail': aliases_before_periods,
-            'unique_aliases': list(set(a['alias'].lower() for a in aliases_before_periods))
-        }
 
 
 def normalize_casing(text: str) -> str:
@@ -408,8 +329,8 @@ def main():
         # "  select * from  orders where   column in (1, 2, 3);",
         # " SELECT p.department as dept  from personnel p where id = 10",
         # "SELECT p.name as Employee FROM personnel p WHERE p.id = 10;",
-        "SELECT p.name, c.id from personnel p JOIN customers c ON p.id = c.person_id WHERE p.age > 30;",
-        "SELECT COUNT(*) as total_orders FROM orders o WHERE order_date >= '2023-01-01';",
+        # "SELECT p.name, c.id from personnel p JOIN customers c ON p.id = c.person_id WHERE p.age > 30;",
+        # "SELECT COUNT(*) as total_orders FROM orders o WHERE order_date >= '2023-01-01';",
     ]
 
     sql_file_statement = read_sql_file('./data/_raw/messy_sql_1.sql')
