@@ -1,4 +1,5 @@
 import pytest
+import json
 
 from src.sql_query_anonymizer.utils import Anonymizer, TokenType, postprocess_text, preprocess_text
 
@@ -43,7 +44,7 @@ class TestAnonymize:
         anonymizer = Anonymizer()
         query = "SELECT name, age FROM users WHERE id = 1"
         processed_query = preprocess_text(query)
-        anonymized = anonymizer.anonymize(processed_query)
+        anonymized = anonymizer.anonymize_query(processed_query)
 
         # Basic checks
         assert "SELECT" in anonymized  # Keywords preserved
@@ -61,7 +62,7 @@ class TestAnonymize:
         """Parameterized test for different types of SQL queries."""
         query = sample_queries[query_key]
         processed_query = preprocess_text(query)
-        anonymized = anonymizer.anonymize(processed_query)
+        anonymized = anonymizer.anonymize_query(processed_query)
 
         # Basic assertions that should hold for all queries
         assert len(anonymized) > 0
@@ -84,8 +85,8 @@ class TestDeanonymize:
         original_query = sample_queries[query_key]
         processed_query = preprocess_text(original_query)
 
-        anonymized = anonymizer.anonymize(processed_query)
-        deanonymized = anonymizer.de_anonymize(anonymized)
+        anonymized = anonymizer.anonymize_query(processed_query)
+        deanonymized = anonymizer.de_anonymize_query(anonymized)
 
         # Normalize whitespace
         original_normalized = " ".join(processed_query.split())
@@ -94,16 +95,130 @@ class TestDeanonymize:
         assert original_normalized == deanonymized_normalized
 
 
+class TestSerialization:
+    """Test class for serialization and deserialization functionality."""
+
+    def test_serialize_anonymized_query(self, anonymizer, tmp_path):
+        """Test serialization of anonymized query with mappings."""
+        original_query = "SELECT c.name FROM customers c WHERE c.id = 1"
+        processed_query = preprocess_text(original_query)
+        anonymized_query = anonymizer.anonymize_query(processed_query)
+        
+        # Serialize the data
+        serialization_file = tmp_path / "test_serialization.json"
+        anonymizer.serialize_anonymized_query(processed_query, anonymized_query, str(serialization_file))
+        
+        # Verify file exists
+        assert serialization_file.exists()
+        
+        # Verify file contents
+        with open(serialization_file, 'r') as f:
+            data = json.load(f)
+        
+        assert "original_query" in data
+        assert "anonymized_query" in data
+        assert "mappings" in data
+        assert "reverse_mappings" in data
+        assert "counters" in data
+        assert "metadata" in data
+        assert data["original_query"] == processed_query
+        assert data["anonymized_query"] == anonymized_query
+
+    def test_deserialize_and_decode(self, anonymizer, tmp_path):
+        """Test deserialization and decoding functionality."""
+        original_query = "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id"
+        processed_query = preprocess_text(original_query)
+        anonymized_query = anonymizer.anonymize_query(processed_query)
+        
+        # Serialize
+        serialization_file = tmp_path / "test_deserialize.json"
+        anonymizer.serialize_anonymized_query(processed_query, anonymized_query, str(serialization_file))
+        
+        # Create new anonymizer and deserialize
+        new_anonymizer = Anonymizer()
+        loaded_data = new_anonymizer.deserialize_and_decode(str(serialization_file))
+        
+        # Test loaded data structure
+        assert "original_query" in loaded_data
+        assert "anonymized_query" in loaded_data
+        assert "decode_query" in loaded_data
+        assert "decode_partial" in loaded_data
+        assert "get_mapping" in loaded_data
+        assert "table_aliases" in loaded_data
+        
+        # Test decoding functionality
+        decoded_query = loaded_data["decode_query"](anonymized_query)
+        original_normalized = " ".join(processed_query.split())
+        decoded_normalized = " ".join(decoded_query.split())
+        assert original_normalized == decoded_normalized
+
+    def test_process_optimized_query(self, anonymizer):
+        original_query = "SELECT name FROM users WHERE active = 1"
+        processed_query = preprocess_text(original_query)
+        anonymized_query = anonymizer.anonymize_query(processed_query)
+        
+        # Simulate optimization (add hints)
+        optimized_anonymized = anonymized_query.replace("SELECT", "SELECT /*+ INDEX */")
+        
+        # Process optimized query
+        decoded_optimized = anonymizer.process_optimized_query(optimized_anonymized)
+        
+        # Should contain original identifiers and optimization hints
+        assert "name" in decoded_optimized
+        assert "users" in decoded_optimized
+        assert "INDEX" in decoded_optimized  # The comment content should be there
+
+    def test_table_aliases_quantification(self, anonymizer):
+        """Test quantification of table aliases that precede periods."""
+        query = "SELECT c.name, c.email, o.total FROM customers c JOIN orders o ON c.id = o.customer_id"
+        processed_query = preprocess_text(query)
+        
+        alias_info = anonymizer.get_table_aliases_quantification(processed_query)
+        
+        # Should detect aliases 'c' and 'o'
+        assert alias_info["aliases_count"] == 2
+        assert "c" in alias_info["aliases"]
+        assert "o" in alias_info["aliases"]
+        assert alias_info["aliases"]["c"] == 3  # c.name, c.email, c.id
+        assert alias_info["aliases"]["o"] == 2  # o.total, o.customer_id
+        assert alias_info["total_references"] == 5
+
+    def test_serialization_roundtrip_with_optimization(self, anonymizer, tmp_path):
+        """Test complete workflow: serialize -> optimize -> decode."""
+        original_query = "SELECT p.name, c.title FROM products p JOIN categories c ON p.category_id = c.id"
+        processed_query = preprocess_text(original_query)
+        anonymized_query = anonymizer.anonymize_query(processed_query)
+        
+        # Serialize
+        serialization_file = tmp_path / "roundtrip_test.json"
+        anonymizer.serialize_anonymized_query(processed_query, anonymized_query, str(serialization_file))
+        
+        # Simulate query optimization
+        optimized_anonymized = anonymized_query.replace(
+            "SELECT", "SELECT /*+ USE_HASH_JOIN */"
+        )
+        
+        # Deserialize and decode optimized query
+        new_anonymizer = Anonymizer()
+        loaded_data = new_anonymizer.deserialize_and_decode(str(serialization_file))
+        final_decoded = loaded_data["decode_query"](optimized_anonymized)
+        
+        # Should contain original identifiers and optimization hints
+        assert "name" in final_decoded
+        assert "products" in final_decoded
+        assert "categories" in final_decoded
+        assert "USE_HASH_JOIN" in final_decoded  # The comment content should be there
+
+
 class TestEdgeCases:
     """Test class for edge cases and error conditions."""
 
     def test_anonymizer_prefix_invalid_token_type(self):
         """Test that _prefix method raises ValueError for unsupported token types."""
         anonymizer = Anonymizer()
-
+        
         with pytest.raises(ValueError, match="Unsupported token type"):
             anonymizer._prefix(TokenType.KEYWORD)
-
 
 @pytest.mark.parametrize("query, expected_output",
     [
@@ -115,8 +230,8 @@ class TestEdgeCases:
 )
 def test_anonymizer_long_query(query, expected_output):
     processed_sample = preprocess_text(query)
-    anonymizer = Anonymizer()
-    anonymized_query = anonymizer.anonymize(processed_sample)
+    anonymizer = Anonymizer(mapping_file="NONE")  # Don't load persistent mappings for tests
+    anonymized_query = anonymizer.anonymize_query(processed_sample)
     actual = postprocess_text(anonymized_query)
 
     assert actual == expected_output

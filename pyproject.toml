@@ -10,6 +10,7 @@ requires-python = ">=3.13"
 dependencies = []
 
 [project.scripts]
+sql-anonymizer = "sql_query_anonymizer.cli:main"
 sql = "sql_query_anonymizer.utils:main"
 
 [build-system]
@@ -29,7 +30,4 @@ python_files = ["test_*.py", "*_test.py", "tests.py"]
 omit = [
     "tests/*",
     "src/sql_query_anonymizer/__init__.py",
-    "src/sql_query_anonymizer/anonymize.py",
-    "src/sql_query_anonymizer/cli.py",
-    "src/sql_query_anonymizer/tokenize.py"
 ]

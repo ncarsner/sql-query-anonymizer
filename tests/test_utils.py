@@ -313,7 +313,7 @@ def test_anonymizer_class(
 ):
     a = Anonymizer(mapping_file="NONE")  # Don't load persistent mappings for tests
 
-    actual = a.anonymize(query)
+    actual = a.anonymize_query(query)
     assert actual == expected_output
 
     assert a.counters[TokenType.IDENTIFIER] == expected_mapping_count
