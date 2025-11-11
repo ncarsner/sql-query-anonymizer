@@ -1,5 +1,6 @@
 import pytest
 
+from sql_query_anonymizer.helper_utilities import read_sql_file
 from src.sql_query_anonymizer.utils import (
     Anonymizer,
     TokenType,
@@ -310,9 +311,9 @@ def test_anonymizer_class(
     expected_literal_count,
     expected_literals,
 ):
-    a = Anonymizer()
+    a = Anonymizer(mapping_file="NONE")  # Don't load persistent mappings for tests
 
-    actual = a.anonymize(query)
+    actual = a.anonymize_query(query)
     assert actual == expected_output
 
     assert a.counters[TokenType.IDENTIFIER] == expected_mapping_count
@@ -328,3 +329,11 @@ def test_anonymizer_class(
     #     "identifier_alias": 0,
     #     "literal": 1,
     # }
+
+def test_read_sql_file():
+    sql_content = read_sql_file("./data/_raw/messy_sql_1.sql")
+    assert "-- This is a comment" not in sql_content
+    assert "WHERE order_date >= '2023-01-01'" in sql_content
+    assert sql_content.startswith("SELECT")
+    assert sql_content.endswith(";")
+    assert "\n" not in sql_content
