@@ -46,14 +46,14 @@ class Anonymizer:
         - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
     """
 
-    def __init__(self, mapping_file: str = None, auto_save: bool = True):
+    def __init__(self, mapping_file: str | None = None, auto_save: bool = True):
         self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
         self.counters: dict[TokenType, int] = Counter()
         self.reverse_mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
         
         # CLI and persistence settings  
         # Special case: if mapping_file is explicitly the string "NONE", disable persistence for tests
-        if mapping_file == "NONE":
+        if mapping_file is None:
             self.mapping_file = None
             self.auto_save = False
             load_existing = False
@@ -91,7 +91,7 @@ class Anonymizer:
             raise ValueError(f"Unsupported token type: {token_type}")
         return type_prefixes[token_type]
 
-    def __getitem__(self, identifier: str, token_type: TokenType) -> str:
+    def get_or_assign(self, identifier: str, token_type: TokenType) -> str:
         # DEBUG: print the identifier and token type being processed
         print(f"Identifier: {identifier}, Type: {token_type}")
 
@@ -124,7 +124,7 @@ class Anonymizer:
         for token in tokens:
             if token.type in TYPE_PREFIXES:
                 original_count = sum(self.counters.values())
-                anonymized_value = self.__getitem__(token.value, token.type)
+                anonymized_value = self.get_or_assign(token.value, token.type)
                 
                 # Check if new mapping was created
                 if sum(self.counters.values()) > original_count:
@@ -158,7 +158,7 @@ class Anonymizer:
                     original_type = check_type
                     break
 
-            if original_value is not None:
+            if original_value is not None and original_type is not None:
                 de_anonymized_tokens.append(
                     Token(original_type, original_value, token.space)
                 )
@@ -354,6 +354,8 @@ class Anonymizer:
         Returns:
             bool: True if saved successfully, False otherwise
         """
+        if self.mapping_file is None:
+            return False
         try:
             self.save_mappings_to_json(self.mapping_file)
             return True
@@ -663,7 +665,7 @@ def demonstrate_serialization_workflow():
     
     # Step 2: Preprocess and anonymize
     processed_query = preprocess_text(original_query)
-    anonymizer = Anonymizer()
+    anonymizer = Anonymizer(mapping_file=None)
     
     # Get table alias quantification before anonymization
     alias_info = anonymizer.get_table_aliases_quantification(processed_query)
@@ -671,7 +673,7 @@ def demonstrate_serialization_workflow():
     print(f"   - Aliases found: {alias_info['aliases']}")
     print(f"   - Total alias references: {alias_info['total_references']}")
     
-    anonymized_query = anonymizer.anonymize(processed_query)
+    anonymized_query = anonymizer.anonymize_query(processed_query)
     postprocessed_anonymized = postprocess_text(anonymized_query)
     
     print("\n3. Anonymized Query:")
@@ -732,8 +734,8 @@ def main():
 
             print(f"Processed Text:  {processed_sample}")
 
-            anonymizer = Anonymizer()
-            anonymized_query = anonymizer.anonymize(processed_sample)
+            anonymizer = Anonymizer(mapping_file=None)
+            anonymized_query = anonymizer.anonymize_query(processed_sample)
             postprocessed_query = postprocess_text(anonymized_query)
             print(f"Anonymized Text: {postprocessed_query}")
 

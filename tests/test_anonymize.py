@@ -230,7 +230,7 @@ class TestEdgeCases:
 )
 def test_anonymizer_long_query(query, expected_output):
     processed_sample = preprocess_text(query)
-    anonymizer = Anonymizer(mapping_file="NONE")  # Don't load persistent mappings for tests
+    anonymizer = Anonymizer()  # Don't load persistent mappings for tests
     anonymized_query = anonymizer.anonymize_query(processed_sample)
     actual = postprocess_text(anonymized_query)
 
