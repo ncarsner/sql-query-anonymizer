@@ -166,7 +166,11 @@ class Anonymizer:
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        self.save()
+        if exc_type is None:
+            try:
+                self.save()
+            except Exception as e:
+                print(f"Exception during save in __exit__: {e}")
         # return False → bubble exceptions normally
         return False
 
