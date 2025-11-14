@@ -148,7 +148,8 @@ class Anonymizer:
             self.mappings = state["mappings"]
             self.reverse_mappings = state["reverse_mappings"]
             self.counters = state["counters"]
-        except FileNotFoundError:
+        except (FileNotFoundError, pickle.UnpicklingError, EOFError, KeyError):
+            # If the mapping file is missing, corrupted, or malformed, ignore and start fresh.
             pass
 
     def save(self):
