@@ -140,8 +140,7 @@ class AnonymizerCLI:
 
     def export_mappings(self, export_path: str, mapping_file: str | None = None) -> bool:
         """Export mappings to a file."""
-        import shutil
-        from pathlib import Path
+        
         
         anonymizer = self.setup_anonymizer(mapping_file, auto_save=False)
         
