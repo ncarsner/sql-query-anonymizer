@@ -11,6 +11,7 @@ import sys
 from typing import Optional
 import shutil
 from pathlib import Path
+import traceback
 
 from .utils import Anonymizer, preprocess_text, postprocess_text
 from .helper_utilities import read_sql_file
@@ -32,8 +33,6 @@ class AnonymizerCLI:
 
     def anonymize_query(self, query: str, mapping_file: str | None = None, auto_save: bool = True) -> str:
         """
-        Anonymize a SQL query string.
-        
         Args:
             query: SQL query to anonymize
             mapping_file: Optional custom mapping file path
@@ -51,8 +50,6 @@ class AnonymizerCLI:
 
     def deanonymize_query(self, query: str, mapping_file: str | None = None, auto_save: bool = True) -> str:
         """
-        De-anonymize a SQL query string.
-        
         Args:
             query: Anonymized SQL query to decode
             mapping_file: Optional custom mapping file path
@@ -114,7 +111,6 @@ class AnonymizerCLI:
             return False
 
     def show_mappings(self, mapping_file: str | None = None) -> None:
-        """Display current mappings and statistics."""
         anonymizer = self.setup_anonymizer(mapping_file, auto_save=True)
         
         print("\n=== Mapping Statistics ===")
@@ -139,9 +135,7 @@ class AnonymizerCLI:
         print("All mappings cleared.")
 
     def export_mappings(self, export_path: str, mapping_file: str | None = None) -> bool:
-        """Export mappings to a file."""
-        
-        
+        """Export mappings to a file."""        
         anonymizer = self.setup_anonymizer(mapping_file, auto_save=False)
         
         try:
@@ -168,9 +162,7 @@ class AnonymizerCLI:
 
     def import_mappings(self, import_path: str, mapping_file: str | None = None) -> bool:
         """Import mappings from a file."""
-        import shutil
-        from pathlib import Path
-        
+
         try:
             import_file = Path(import_path)
             if not import_file.exists():
@@ -409,7 +401,6 @@ def main():
     except Exception as e:
         print(f"Error: {e}")
         if args.verbose:
-            import traceback
             traceback.print_exc()
         return 1
 
