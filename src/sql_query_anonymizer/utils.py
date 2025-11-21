@@ -1,10 +1,10 @@
+import pickle
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import Path
 from typing import List
-import json
-import os
 
 from .constants import ALL_SQL_FUNCTIONS, OP_PATTERN, SQL_KEYWORDS
 from .helper_utilities import read_sql_file
@@ -46,40 +46,23 @@ class Anonymizer:
         - anonymize: Takes a SQL query string, tokenizes it, and replaces identifiers with their placeholders.
     """
 
-    def __init__(self, mapping_file: str | None = None, auto_save: bool = True):
+    def __init__(self, mapping_file: str | None = None):
         self.mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
         self.counters: dict[TokenType, int] = Counter()
         self.reverse_mappings: dict[TokenType, dict[str, str]] = defaultdict(dict)
-        
-        # CLI and persistence settings  
-        # Special case: if mapping_file is explicitly the string "NONE", disable persistence for tests
+
+        self.mapping_dir = Path.home() / ".sql_anonymizer"
+        self.mapping_dir.mkdir(parents=True, exist_ok=True)
+
         if mapping_file is None:
-            self.mapping_file = None
-            self.auto_save = False
-            load_existing = False
+            self.mapping_file = self.mapping_dir / "mappings.pkl"
         else:
-            self.mapping_file = mapping_file if mapping_file is not None else self._get_default_mapping_file()
-            self.auto_save = auto_save
-            load_existing = True
-        
-        # Load existing mappings if persistence is enabled and file exists
-        if load_existing and self.mapping_file and os.path.exists(self.mapping_file):
-            try:
-                self.load_mappings_from_json(self.mapping_file)
-                print(f"Loaded existing mappings from: {self.mapping_file}")
-            except Exception as e:
-                print(f"Warning: Could not load mappings from {self.mapping_file}: {e}")
-                
-    def _get_default_mapping_file(self) -> str:
-        """Get the default mapping file location."""
-        # Create a .sql_anonymizer directory in user's home for storing mappings
-        home_dir = os.path.expanduser("~")
-        mapping_dir = os.path.join(home_dir, ".sql_anonymizer")
-        
-        # Create directory if it doesn't exist
-        os.makedirs(mapping_dir, exist_ok=True)
-        
-        return os.path.join(mapping_dir, "mappings.json")
+            mapping_path = Path(mapping_file)
+            # allow absolute paths to live outside ~/.sql_anonymizer
+            if mapping_path.is_absolute():
+                self.mapping_file = mapping_path
+            else:
+                self.mapping_file = self.mapping_dir / mapping_path
 
     def _prefix(self, token_type: TokenType):
         type_prefixes = {
@@ -93,7 +76,7 @@ class Anonymizer:
 
     def get_or_assign(self, identifier: str, token_type: TokenType) -> str:
         # DEBUG: print the identifier and token type being processed
-        print(f"Identifier: {identifier}, Type: {token_type}")
+        # print(f"Identifier: {identifier}, Type: {token_type}")
 
         # Special handling for aliases - return as-is
         if token_type is TokenType.TABLE_ALIAS:
@@ -119,26 +102,17 @@ class Anonymizer:
         tokens = tokenize_sql(query)
 
         anonymized_tokens = []
-        mappings_changed = False
-        
+
         for token in tokens:
             if token.type in TYPE_PREFIXES:
-                original_count = sum(self.counters.values())
                 anonymized_value = self.get_or_assign(token.value, token.type)
-                
+
                 # Check if new mapping was created
-                if sum(self.counters.values()) > original_count:
-                    mappings_changed = True
-                    
                 anonymized_tokens.append(
                     Token(token.type, anonymized_value, token.space)
                 )
             else:
                 anonymized_tokens.append(token)
-
-        # Auto-save mappings if they changed and auto_save is enabled
-        if mappings_changed and self.auto_save:
-            self._save_mappings_safely()
 
         return " ".join(token.value for token in anonymized_tokens)
 
@@ -167,113 +141,49 @@ class Anonymizer:
 
         return " ".join(token.value for token in de_anonymized_tokens)
 
-    def save_mappings_to_json(self, filepath: str) -> None:
-        mappings_data = {
-            "mappings": {str(k): v for k, v in self.mappings.items()},
-            "reverse_mappings": {str(k): v for k, v in self.reverse_mappings.items()},
-            "counters": {str(k): v for k, v in self.counters.items()},
+    def load(self):
+        try:
+            with open(self.mapping_file, "rb") as f:
+                state = pickle.load(f)
+            self.mappings = state["mappings"]
+            self.reverse_mappings = state["reverse_mappings"]
+            self.counters = state["counters"]
+        except (FileNotFoundError, pickle.UnpicklingError, EOFError, KeyError):
+            # If the mapping file is missing, corrupted, or malformed, ignore and start fresh.
+            pass
+
+    def save(self):
+        state = {
+            "mappings": self.mappings,
+            "reverse_mappings": self.reverse_mappings,
+            "counters": self.counters,
         }
+        with open(self.mapping_file, "wb") as f:
+            pickle.dump(state, f)
 
-        with open(filepath, "w") as f:
-            json.dump(mappings_data, f, indent=2)
+    def __enter__(self):
+        self.load()
+        return self
 
-    def load_mappings_from_json(self, filepath: str) -> None:
-        with open(filepath, "r") as f:
-            loaded_data = json.load(f)
-
-        # Clear existing mappings
-        self.mappings = defaultdict(dict)
-        self.reverse_mappings = defaultdict(dict)
-        self.counters = Counter()
-
-        # Convert string keys back to TokenType
-        for token_type_str, mapping in loaded_data["mappings"].items():
-            token_type = getattr(TokenType, token_type_str.split(".")[1])
-            self.mappings[token_type] = mapping
-
-        for token_type_str, mapping in loaded_data["reverse_mappings"].items():
-            token_type = getattr(TokenType, token_type_str.split(".")[1])
-            self.reverse_mappings[token_type] = mapping
-
-        for token_type_str, count in loaded_data["counters"].items():
-            token_type = getattr(TokenType, token_type_str.split(".")[1])
-            self.counters[token_type] = count
-
-    def serialize_anonymized_query(self, original_query: str, anonymized_query: str, filepath: str) -> None:
-        """
-        Serialize an anonymized query with its mappings for later recall and optimization.
-        
-        Args:
-            original_query: The original SQL query
-            anonymized_query: The anonymized version of the query
-            filepath: Path to save the serialized data
-        """
-        serialized_data = {
-            "original_query": original_query,
-            "anonymized_query": anonymized_query,
-            "mappings": {str(k): v for k, v in self.mappings.items()},
-            "reverse_mappings": {str(k): v for k, v in self.reverse_mappings.items()},
-            "counters": {str(k): v for k, v in self.counters.items()},
-            "metadata": {
-                "timestamp": self._get_timestamp(),
-                "version": "1.0",
-                "table_aliases": self._extract_table_aliases_info(anonymized_query)
-            }
-        }
-        
-        with open(filepath, "w") as f:
-            json.dump(serialized_data, f, indent=2)
-
-    def deserialize_and_decode(self, filepath: str) -> dict:
-        """
-        Deserialize anonymized query data and provide decoding capabilities.
-        
-        Args:
-            filepath: Path to the serialized data file
-            
-        Returns:
-            Dictionary containing original query, anonymized query, and decoding functions
-        """
-        with open(filepath, "r") as f:
-            data = json.load(f)
-        
-        # Restore mappings
-        self.mappings = defaultdict(dict)
-        self.reverse_mappings = defaultdict(dict)
-        self.counters = Counter()
-        
-        for token_type_str, mapping in data["mappings"].items():
-            token_type = getattr(TokenType, token_type_str.split(".")[1])
-            self.mappings[token_type] = mapping
-            
-        for token_type_str, mapping in data["reverse_mappings"].items():
-            token_type = getattr(TokenType, token_type_str.split(".")[1])
-            self.reverse_mappings[token_type] = mapping
-            
-        for token_type_str, count in data["counters"].items():
-            token_type = getattr(TokenType, token_type_str.split(".")[1])
-            self.counters[token_type] = count
-        
-        return {
-            "original_query": data["original_query"],
-            "anonymized_query": data["anonymized_query"],
-            "metadata": data.get("metadata", {}),
-            "decode_query": lambda query: self.de_anonymize_query(query),
-            "decode_partial": lambda text: self._decode_partial_text(text),
-            "get_mapping": lambda token_type, value: self.reverse_mappings.get(token_type, {}).get(value),
-            "table_aliases": data.get("metadata", {}).get("table_aliases", [])
-        }
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            try:
+                self.save()
+            except Exception as e:
+                print(f"Exception during save in __exit__: {e}")
+        # return False → bubble exceptions normally
+        return False
 
     def process_optimized_query(self, optimized_anonymized_query: str) -> str:
         """
         Process an optimized anonymized query and decode it back to original identifiers.
-        
+
         This method is specifically designed to handle queries that have been optimized
         while in their anonymized state, then decode them back to use original names.
-        
+
         Args:
             optimized_anonymized_query: The optimized query with anonymized identifiers
-            
+
         Returns:
             The optimized query with original identifiers restored
         """
@@ -282,21 +192,21 @@ class Anonymizer:
     def get_table_aliases_quantification(self, query: str) -> dict:
         """
         Quantify and return information about table aliases that precede periods in the query.
-        
+
         Args:
             query: SQL query to analyze
-            
+
         Returns:
             Dictionary with alias quantification information
         """
         tokens = tokenize_sql(query)
         aliases_before_periods = {}
         table_aliases_found = set()
-        
+
         # Debug: print tokens to see structure
         # for i, token in enumerate(tokens):
         #     print(f"{i}: {token.type} -> '{token.value}'")
-        
+
         for i, token in enumerate(tokens):
             # Look for pattern: IDENTIFIER followed by SYMBOL "."
             if (
@@ -309,32 +219,33 @@ class Anonymizer:
                 if alias not in aliases_before_periods:
                     aliases_before_periods[alias] = 0
                 aliases_before_periods[alias] += 1
-                
+
                 # Mark as table alias if not already marked
                 if token.type == TokenType.IDENTIFIER:
                     table_aliases_found.add(alias)
-        
+
         return {
             "aliases_count": len(aliases_before_periods),
             "aliases": aliases_before_periods,
             "total_references": sum(aliases_before_periods.values()),
-            "table_aliases_detected": list(table_aliases_found)
+            "table_aliases_detected": list(table_aliases_found),
         }
 
     def _get_timestamp(self) -> str:
         """Get current timestamp for metadata."""
         import datetime
+
         return datetime.datetime.now().isoformat()
 
     def _extract_table_aliases_info(self, query: str) -> list:
         """Extract information about table aliases from a query."""
         tokens = tokenize_sql(query)
         aliases = []
-        
+
         for token in tokens:
             if token.type == TokenType.TABLE_ALIAS:
                 aliases.append(token.value)
-                
+
         return list(set(aliases))  # Remove duplicates
 
     def _decode_partial_text(self, text: str) -> str:
@@ -347,114 +258,10 @@ class Anonymizer:
                 return self.reverse_mappings[token_type][text]
         return text  # Return original if not found in mappings
 
-    def _save_mappings_safely(self) -> bool:
-        """
-        Safely save mappings to the default file with error handling.
-        
-        Returns:
-            bool: True if saved successfully, False otherwise
-        """
-        if self.mapping_file is None:
-            return False
-        try:
-            self.save_mappings_to_json(self.mapping_file)
-            return True
-        except Exception as e:
-            print(f"Warning: Could not save mappings to {self.mapping_file}: {e}")
-            return False
-
     def clear_mappings(self) -> None:
-        """Clear all mappings from memory and optionally from file."""
         self.mappings = defaultdict(dict)
         self.reverse_mappings = defaultdict(dict)
         self.counters = Counter()
-        
-        if self.auto_save:
-            self._save_mappings_safely()
-
-    def export_mappings(self, filepath: str) -> bool:
-        """
-        Export current mappings to a specified file.
-        
-        Args:
-            filepath: Path to export the mappings
-            
-        Returns:
-            bool: True if exported successfully, False otherwise
-        """
-        try:
-            self.save_mappings_to_json(filepath)
-            print(f"Mappings exported to: {filepath}")
-            return True
-        except Exception as e:
-            print(f"Error exporting mappings: {e}")
-            return False
-
-    def import_mappings(self, filepath: str) -> bool:
-        """
-        Import mappings from a specified file.
-        
-        Args:
-            filepath: Path to import mappings from
-            
-        Returns:
-            bool: True if imported successfully, False otherwise
-        """
-        try:
-            self.load_mappings_from_json(filepath)
-            print(f"Mappings imported from: {filepath}")
-            
-            # Save to default location if auto_save is enabled
-            if self.auto_save:
-                self._save_mappings_safely()
-            return True
-        except Exception as e:
-            print(f"Error importing mappings: {e}")
-            return False
-
-    def get_mapping_stats(self) -> dict:
-        """
-        Get statistics about current mappings.
-        
-        Returns:
-            dict: Statistics about mappings
-        """
-        stats = {
-            "mapping_file": self.mapping_file,
-            "auto_save": self.auto_save,
-            "total_mappings": sum(len(mappings) for mappings in self.mappings.values()),
-            "by_type": {}
-        }
-        
-        for token_type, mappings in self.mappings.items():
-            if mappings:  # Only include non-empty mappings
-                stats["by_type"][str(token_type)] = {
-                    "count": len(mappings),
-                    "counter_value": self.counters.get(token_type, 0)
-                }
-        
-        return stats
-
-    def set_mapping_file(self, filepath: str) -> None:
-        """
-        Set a new mapping file location.
-        
-        Args:
-            filepath: New path for storing mappings
-        """
-        self.mapping_file = filepath
-        print(f"Mapping file set to: {filepath}")
-
-    def toggle_auto_save(self) -> bool:
-        """
-        Toggle auto-save functionality.
-        
-        Returns:
-            bool: New auto_save state
-        """
-        self.auto_save = not self.auto_save
-        print(f"Auto-save {'enabled' if self.auto_save else 'disabled'}")
-        return self.auto_save
 
 
 def normalize_casing(text: str) -> str:
@@ -645,12 +452,13 @@ def postprocess_text(text: str) -> str:
     text = re.sub(r"\s+\.\s+", ".", text)
     return text
 
+
 def demonstrate_serialization_workflow():
     """
     Demonstrate the complete workflow: anonymize -> serialize -> optimize -> decode
     """
     print("=== SQL Query Anonymization & Serialization Workflow ===\n")
-    
+
     # Step 1: Original query
     original_query = """
     SELECT c.customer_name, o.order_date, od.quantity * od.price as total
@@ -659,55 +467,37 @@ def demonstrate_serialization_workflow():
     JOIN order_details od ON o.id = od.order_id
     WHERE c.status = 'active' AND o.order_date > '2023-01-01'
     """
-    
+
     print("1. Original Query:")
     print(original_query.strip())
-    
+
     # Step 2: Preprocess and anonymize
     processed_query = preprocess_text(original_query)
-    anonymizer = Anonymizer(mapping_file=None)
-    
-    # Get table alias quantification before anonymization
-    alias_info = anonymizer.get_table_aliases_quantification(processed_query)
-    print("\n2. Table Aliases Quantification:")
-    print(f"   - Aliases found: {alias_info['aliases']}")
-    print(f"   - Total alias references: {alias_info['total_references']}")
-    
-    anonymized_query = anonymizer.anonymize_query(processed_query)
-    postprocessed_anonymized = postprocess_text(anonymized_query)
-    
-    print("\n3. Anonymized Query:")
-    print(postprocessed_anonymized)
-    
-    # Step 3: Serialize for later recall
-    serialization_file = "anonymized_query.json"
-    anonymizer.serialize_anonymized_query(processed_query, postprocessed_anonymized, serialization_file)
-    print(f"\n4. Serialized to: {serialization_file}")
-    
-    # Step 4: Load serialized data for later recall
-    loaded_data = anonymizer.deserialize_and_decode(serialization_file)
-    
-    print("\n5. Loaded Data Metadata:")
-    print(f"   - Timestamp: {loaded_data['metadata'].get('timestamp', 'N/A')}")
-    print(f"   - Table Aliases: {loaded_data['table_aliases']}")
-    
-    # Step 5: Demonstrate decoding capability with the anonymized query
-    decoded_original_query = anonymizer.process_optimized_query(postprocessed_anonymized)
-    
-    print("\n7. Final Decoded Optimized Query:")
-    print(decoded_original_query)
-    
-    print("\n8. Verification - Roundtrip Test:")
-    print(f"   Original processed: {processed_query[:50]}...")
-    decoded_original = loaded_data['decode_query'](postprocessed_anonymized)
-    print(f"   Decoded original:   {decoded_original[:50]}...")
-    print(f"   Match: {processed_query.strip() == decoded_original.strip()}")
-    
-    # Cleanup
-    if os.path.exists(serialization_file):
-        os.remove(serialization_file)
-        print(f"\n9. Cleaned up {serialization_file}")
+    with Anonymizer() as anonymizer:
+        # Get table alias quantification before anonymization
+        alias_info = anonymizer.get_table_aliases_quantification(processed_query)
+        print("\n2. Table Aliases Quantification:")
+        print(f"   - Aliases found: {alias_info['aliases']}")
+        print(f"   - Total alias references: {alias_info['total_references']}")
 
+        anonymized_query = anonymizer.anonymize_query(processed_query)
+        postprocessed_anonymized = postprocess_text(anonymized_query)
+        print("\n3. Anonymized Query:")
+        print(postprocessed_anonymized)
+
+    assert anonymizer.mapping_file.exists(), "Serialization file not found."
+
+    # open the file again for deserialization
+    with Anonymizer() as anonymizer:
+        decoded_original_query = anonymizer.process_optimized_query(
+            postprocessed_anonymized
+        )
+
+        print("\n4. Final Decoded Optimized Query:")
+        print(decoded_original_query)
+
+    # clean up
+    anonymizer.mapping_file.unlink(missing_ok=True)
 
 
 def main():
@@ -734,14 +524,13 @@ def main():
 
             print(f"Processed Text:  {processed_sample}")
 
-            anonymizer = Anonymizer(mapping_file=None)
+            anonymizer = Anonymizer()
             anonymized_query = anonymizer.anonymize_query(processed_sample)
             postprocessed_query = postprocess_text(anonymized_query)
             print(f"Anonymized Text: {postprocessed_query}")
 
     # Run the serialization workflow demonstration
-    # demonstrate_serialization_workflow()
-    # print("\n" + "="*60 + "\n")
+    demonstrate_serialization_workflow()
 
 
 if __name__ == "__main__":

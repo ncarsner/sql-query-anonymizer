@@ -1,3 +1,11 @@
+import pickle
+import sys
+from pathlib import Path
+
+# Adjust sys.path to allow imports when running as a script
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
 def read_sql_file(filepath: str) -> str:
     """
     Read a SQL file and return its content, filtering out SQL comments.
@@ -18,8 +26,8 @@ def read_sql_file(filepath: str) -> str:
 
 
 if __name__ == "__main__":
-    import pickle
-    from .utils import Anonymizer  # Use relative import only when running as script
+    # Import only when running as a script to avoid circular import
+    from src.sql_query_anonymizer.utils import Anonymizer
     
     # Read the SQL files
     test_query = read_sql_file("./data/_raw/messy_sql_1.sql")

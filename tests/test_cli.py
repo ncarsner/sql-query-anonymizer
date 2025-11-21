@@ -1,7 +1,7 @@
 import tempfile
 import os
-import json
-from unittest.mock import patch, mock_open
+# import json
+# from unittest.mock import patch, mock_open
 
 import pytest
 
@@ -47,24 +47,31 @@ class TestAnonymizerCLI:
         assert "name" in decoded.lower()
         assert "users" in decoded.lower()
 
-    @patch('builtins.open', new_callable=mock_open, read_data="SELECT * FROM products")
-    def test_process_file_anonymize(self, mock_file):
+    def test_process_file_anonymize(self):
         """Test file processing for anonymization."""
         cli = AnonymizerCLI()
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as tmp:
-            tmp_path = tmp.name
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as input_file:
+            input_file.write("SELECT * FROM products WHERE price > 100")
+            input_path = input_file.name
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as output_file:
+            output_path = output_file.name
         
         try:
-            success = cli.process_file("input.sql", tmp_path, "anonymize")
+            success = cli.process_file(input_path, output_path, "anonymize")
             assert success
             
-            # Verify output file was written
-            mock_file.assert_called()
+            # Verify output file was written and contains anonymized content
+            with open(output_path, 'r') as f:
+                content = f.read()
+                assert "table_" in content or "identifier_" in content
             
         finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            if os.path.exists(input_path):
+                os.unlink(input_path)
+            if os.path.exists(output_path):
+                os.unlink(output_path)
 
     def test_mapping_stats(self):
         """Test mapping statistics display."""

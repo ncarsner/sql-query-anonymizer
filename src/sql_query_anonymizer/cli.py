@@ -9,6 +9,9 @@ while preserving mappings for later de-anonymization.
 import argparse
 import sys
 from typing import Optional
+import shutil
+from pathlib import Path
+import traceback
 
 from .utils import Anonymizer, preprocess_text, postprocess_text
 from .helper_utilities import read_sql_file
@@ -23,13 +26,13 @@ class AnonymizerCLI:
     def setup_anonymizer(self, mapping_file: str | None = None, auto_save: bool = True) -> Anonymizer:
         """Setup and return an Anonymizer instance."""
         if self.anonymizer is None or (mapping_file and mapping_file != getattr(self.anonymizer, 'mapping_file', None)):
-            self.anonymizer = Anonymizer(mapping_file=mapping_file, auto_save=auto_save)
+            self.anonymizer = Anonymizer(mapping_file=mapping_file)
+            if auto_save:
+                self.anonymizer.load()  # Load existing mappings if available
         return self.anonymizer
 
     def anonymize_query(self, query: str, mapping_file: str | None = None, auto_save: bool = True) -> str:
         """
-        Anonymize a SQL query string.
-        
         Args:
             query: SQL query to anonymize
             mapping_file: Optional custom mapping file path
@@ -41,12 +44,12 @@ class AnonymizerCLI:
         anonymizer = self.setup_anonymizer(mapping_file, auto_save)
         processed_query = preprocess_text(query)
         anonymized_query = anonymizer.anonymize_query(processed_query)
+        if auto_save:
+            anonymizer.save()
         return postprocess_text(anonymized_query)
 
     def deanonymize_query(self, query: str, mapping_file: str | None = None, auto_save: bool = True) -> str:
         """
-        De-anonymize a SQL query string.
-        
         Args:
             query: Anonymized SQL query to decode
             mapping_file: Optional custom mapping file path
@@ -56,7 +59,10 @@ class AnonymizerCLI:
             str: De-anonymized query
         """
         anonymizer = self.setup_anonymizer(mapping_file, auto_save=auto_save)
-        return anonymizer.de_anonymize_query(query)
+        result = anonymizer.de_anonymize_query(query)
+        if auto_save:
+            anonymizer.save()
+        return result
 
     def process_file(self, input_file: str, output_file: str | None = None,
                     operation: str = "anonymize", mapping_file: str | None = None) -> bool:
@@ -105,19 +111,20 @@ class AnonymizerCLI:
             return False
 
     def show_mappings(self, mapping_file: str | None = None) -> None:
-        """Display current mappings and statistics."""
         anonymizer = self.setup_anonymizer(mapping_file, auto_save=True)
-        stats = anonymizer.get_mapping_stats()
         
         print("\n=== Mapping Statistics ===")
-        print(f"Mapping file: {stats['mapping_file']}")
-        print(f"Auto-save: {stats['auto_save']}")
-        print(f"Total mappings: {stats['total_mappings']}")
+        print(f"Mapping file: {anonymizer.mapping_file}")
         
-        if stats['by_type']:
+        total_mappings = sum(len(mappings) for mappings in anonymizer.mappings.values())
+        print(f"Total mappings: {total_mappings}")
+        
+        if total_mappings > 0:
             print("\nMappings by type:")
-            for token_type, info in stats['by_type'].items():
-                print(f"  {token_type}: {info['count']} mappings (counter: {info['counter_value']})")
+            for token_type, mappings in anonymizer.mappings.items():
+                if mappings:
+                    counter_value = anonymizer.counters.get(token_type, 0)
+                    print(f"  {token_type.name}: {len(mappings)} mappings (counter: {counter_value})")
         else:
             print("No mappings found.")
 
@@ -128,14 +135,52 @@ class AnonymizerCLI:
         print("All mappings cleared.")
 
     def export_mappings(self, export_path: str, mapping_file: str | None = None) -> bool:
-        """Export mappings to a file."""
+        """Export mappings to a file."""        
         anonymizer = self.setup_anonymizer(mapping_file, auto_save=False)
-        return anonymizer.export_mappings(export_path)
+        
+        try:
+            # Save current state to a temporary location
+            export_file = Path(export_path)
+            export_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy the mapping file
+            if anonymizer.mapping_file.exists():
+                shutil.copy(anonymizer.mapping_file, export_file)
+                print(f"Mappings exported to: {export_file}")
+                return True
+            else:
+                # Save current state if file doesn't exist
+                temp_file = anonymizer.mapping_file
+                anonymizer.mapping_file = export_file
+                anonymizer.save()
+                anonymizer.mapping_file = temp_file
+                print(f"Mappings exported to: {export_file}")
+                return True
+        except Exception as e:
+            print(f"Error exporting mappings: {e}")
+            return False
 
     def import_mappings(self, import_path: str, mapping_file: str | None = None) -> bool:
         """Import mappings from a file."""
-        anonymizer = self.setup_anonymizer(mapping_file)
-        return anonymizer.import_mappings(import_path)
+
+        try:
+            import_file = Path(import_path)
+            if not import_file.exists():
+                print(f"Error: Import file not found: {import_file}")
+                return False
+            
+            anonymizer = self.setup_anonymizer(mapping_file)
+            
+            # Copy the import file to the mapping location
+            shutil.copy(import_file, anonymizer.mapping_file)
+            
+            # Reload the mappings
+            anonymizer.load()
+            print(f"Mappings imported from: {import_file}")
+            return True
+        except Exception as e:
+            print(f"Error importing mappings: {e}")
+            return False
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -356,7 +401,6 @@ def main():
     except Exception as e:
         print(f"Error: {e}")
         if args.verbose:
-            import traceback
             traceback.print_exc()
         return 1
 
