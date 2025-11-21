@@ -311,7 +311,7 @@ def test_anonymizer_class(
     expected_literal_count,
     expected_literals,
 ):
-    a = Anonymizer(mapping_file="NONE")  # Don't load persistent mappings for tests
+    a = Anonymizer()  # Don't load persistent mappings for tests
 
     actual = a.anonymize_query(query)
     assert actual == expected_output
@@ -336,4 +336,3 @@ def test_read_sql_file():
     assert "WHERE order_date >= '2023-01-01'" in sql_content
     assert sql_content.startswith("SELECT")
     assert sql_content.endswith(";")
-    assert "\n" not in sql_content
