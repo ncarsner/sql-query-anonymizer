@@ -1,33 +1,30 @@
-# SQL Query Anonymizer - CLI Usage Guide
+# CLI Quick Reference
 
-## Overview
+A focused reference for using the SQL Query Anonymizer command-line interface.
 
-The SQL Query Anonymizer provides a comprehensive command-line interface for anonymizing SQL queries while preserving their structure and maintaining persistent mappings for de-anonymization.
+For complete documentation, see [README.md](README.md).
 
-## Installation & Setup
+> **Note:** After installing the package with `pip install -e .` or `uv sync`, the `sql-anonymizer` command will be available in your terminal.
+
+## Quick Start
 
 ```bash
-# Install the package (if using pip)
-pip install -e .
+# Run CLI
+sql-anonymizer --help
 
-# Or run directly from the repository
-python -m src.sql_query_anonymizer.cli --help
+# Anonymize a query
+sql-anonymizer anonymize "SELECT name FROM users"
+
+# De-anonymize a query
+sql-anonymizer deanonymize "SELECT identifier_1 FROM table_1"
 ```
 
-## Key Features
+## Default Storage
 
-- **Persistent Mappings**: Automatically saves and loads mappings between sessions
-- **Multiple Storage Options**: Use default location or specify custom mapping files
-- **File Processing**: Process entire SQL files or individual queries
-- **Interactive Mode**: Command-line interface for exploratory work
-- **Import/Export**: Backup and share mapping configurations
-
-## Default Mapping Storage
-
-By default, mappings are stored in `~/.sql_anonymizer/mappings.json` and are automatically:
-- **Loaded** when starting a new session (if the file exists)
-- **Saved** whenever new mappings are created (auto-save mode)
-- **Preserved** across different CLI sessions
+Mappings are stored as pickle files in `~/.sql_anonymizer/mappings.pkl`:
+- **Auto-loaded** when CLI starts (if file exists)
+- **Auto-saved** after anonymization operations
+- **Persistent** across CLI sessions
 
 ## Command Structure
 
@@ -36,9 +33,9 @@ sql-anonymizer [GLOBAL_OPTIONS] COMMAND [COMMAND_OPTIONS]
 ```
 
 ### Global Options
-- `-m, --mapping-file PATH`: Use custom mapping file location
+- `-m, --mapping-file PATH`: Use custom mapping file (must be `.pkl` file)
 - `--no-auto-save`: Disable automatic saving of mappings
-- `-v, --verbose`: Enable verbose output
+- `-v, --verbose`: Enable verbose output  
 - `-h, --help`: Show help information
 
 ## Commands
@@ -57,7 +54,7 @@ sql-anonymizer anonymize -f input_query.sql -o anonymized_query.sql
 
 **Use custom mapping file:**
 ```bash
-sql-anonymizer -m project_mappings.json anonymize "SELECT * FROM customers"
+sql-anonymizer -m project_mappings.pkl anonymize "SELECT * FROM customers"
 ```
 
 ### 2. De-anonymize Queries
@@ -86,12 +83,12 @@ sql-anonymizer clear-mappings
 
 **Export mappings:**
 ```bash
-sql-anonymizer export-mappings backup_mappings.json
+sql-anonymizer export-mappings backup_mappings.pkl
 ```
 
 **Import mappings:**
 ```bash
-sql-anonymizer import-mappings backup_mappings.json
+sql-anonymizer import-mappings backup_mappings.pkl
 ```
 
 ### 4. Interactive Mode
@@ -101,15 +98,7 @@ sql-anonymizer import-mappings backup_mappings.json
 sql-anonymizer interactive
 ```
 
-In interactive mode, you can use these commands:
-- `anonymize <query>` - Anonymize a SQL query
-- `deanonymize <query>` - De-anonymize a query
-- `show-mappings` - Display mapping statistics
-- `clear-mappings` - Clear all mappings
-- `export <file>` - Export mappings to file
-- `import <file>` - Import mappings from file
-- `help` - Show available commands
-- `quit` - Exit interactive mode
+Interactive mode provides a REPL-like experience for working with multiple queries.
 
 ## Usage Examples
 
@@ -118,28 +107,28 @@ In interactive mode, you can use these commands:
 ```bash
 # Anonymize a query (creates/updates mappings)
 sql-anonymizer anonymize "SELECT c.name, o.total FROM customers c JOIN orders o ON c.id = o.customer_id"
-
-# Result: SELECT c.identifier_1 , o.identifier_2 FROM table_1 c JOIN table_2 o ON c.identifier_3 = o.identifier_4
+# Output: SELECT c.identifier_1 , o.identifier_2 FROM table_1 c JOIN table_2 o ON c.identifier_3 = o.identifier_4
 
 # Check what mappings were created
 sql-anonymizer show-mappings
 
-# De-anonymize the result
+# De-anonymize the result  
 sql-anonymizer deanonymize "SELECT c.identifier_1 , o.identifier_2 FROM table_1 c JOIN table_2 o ON c.identifier_3 = o.identifier_4"
+# Output: SELECT c.name , o.total FROM customers c JOIN orders o ON c.id = o.customer_id
 ```
 
 ### Example 2: Project-Specific Mappings
 
 ```bash
 # Use project-specific mapping file
-PROJECT_MAPPINGS="./project_mappings.json"
+PROJECT_MAPPINGS="./project_mappings.pkl"
 
 # Anonymize multiple queries for the same project
 sql-anonymizer -m $PROJECT_MAPPINGS anonymize "SELECT * FROM users"
-sql-anonymizer -m $PROJECT_MAPPINGS anonymize "SELECT * FROM orders"  # Reuses 'users' if referenced
+sql-anonymizer -m $PROJECT_MAPPINGS anonymize "SELECT * FROM orders"
 
 # Export project mappings for sharing
-sql-anonymizer -m $PROJECT_MAPPINGS export-mappings shared_mappings.json
+sql-anonymizer -m $PROJECT_MAPPINGS export-mappings shared_mappings.pkl
 ```
 
 ### Example 3: File Processing
@@ -156,38 +145,28 @@ sql-anonymizer deanonymize -f optimized_anonymized.sql -o final_query.sql
 
 ```bash
 # Backup current mappings
-sql-anonymizer export-mappings backup_$(date +%Y%m%d).json
+sql-anonymizer export-mappings backup_$(date +%Y%m%d).pkl
 
 # Clear mappings for fresh start
 sql-anonymizer clear-mappings
 
 # Later, restore from backup
-sql-anonymizer import-mappings backup_20241031.json
+sql-anonymizer import-mappings backup_20241210.pkl
 ```
 
 ## Mapping File Format
 
-The mapping files are JSON format containing:
+Mapping files use Python's pickle format (`.pkl`) containing:
+- **mappings**: Dictionary of original identifiers → placeholders (by token type)
+- **reverse_mappings**: Dictionary of placeholders → original identifiers (for de-anonymization)
+- **counters**: Current counter values for each token type
 
-```json
-{
-  "mappings": {
-    "TokenType.IDENTIFIER": {"name": "identifier_1", "email": "identifier_2"},
-    "TokenType.TABLE": {"users": "table_1", "orders": "table_2"},
-    "TokenType.LITERAL": {"1": "literal_1", "'active'": "literal_2"}
-  },
-  "reverse_mappings": {
-    "TokenType.IDENTIFIER": {"identifier_1": "name", "identifier_2": "email"},
-    "TokenType.TABLE": {"table_1": "users", "table_2": "orders"},
-    "TokenType.LITERAL": {"literal_1": "1", "literal_2": "'active'"}
-  },
-  "counters": {
-    "TokenType.IDENTIFIER": 2,
-    "TokenType.TABLE": 2,
-    "TokenType.LITERAL": 2
-  }
-}
-```
+The pickle format provides:
+- **Efficient serialization** of Python objects
+- **Type preservation** (no need to parse enums)
+- **Fast load/save** operations
+
+Note: Pickle files are Python-specific and not human-readable. For sharing across languages, use export/import to create portable files.
 
 ## Integration with Query Optimizers
 
@@ -224,7 +203,8 @@ sql-anonymizer deanonymize -f optimized_anonymized.sql -o final_optimized_query.
 **Errors with custom mapping files:**
 - Ensure the directory exists and is writable
 - Use absolute paths for mapping files
-- Verify JSON format if importing existing mappings
+- Verify the file is a valid pickle file (`.pkl` extension)
+- Pickle files are Python version-specific; regenerate if needed
 
 ## Performance Tips
 

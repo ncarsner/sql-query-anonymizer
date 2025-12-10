@@ -1,18 +1,18 @@
 # SQL Query Anonymizer
 
-A command-line tool for anonymizing SQL queries while preserving their structure and maintaining the ability to de-anonymize them later. Perfect for query optimization workflows, security testing, or data sharing scenarios where you need to hide sensitive identifiers.
+A Python tool for anonymizing SQL queries while preserving their structure and maintaining the ability to de-anonymize them later. Perfect for query optimization workflows, security testing, or data sharing scenarios where you need to hide sensitive identifiers.
 
 ## ✨ Features
 
 - **🔒 Anonymization**: Replace table names, column names, and literals with generic placeholders
 - **🔓 De-anonymization**: Restore original identifiers from anonymized queries
-- **💾 Persistent Mappings**: Maintain consistent mappings across sessions
-- **🎯 Structure Preservation**: Keep SQL syntax and query structure intact
+- **💾 Persistent Mappings**: Pickle-based storage maintains mappings across sessions
+- **🎯 Structure Preservation**: SQL syntax and query structure remain intact
 - **📊 Table Alias Detection**: Quantifies table aliases in SELECT statements
 - **🔄 Roundtrip Guarantee**: Perfect roundtrip anonymization ↔ de-anonymization
-- **🖥️ CLI Interface**: Full command-line interface with multiple commands
+- **🖥️ CLI & Python API**: Use via command-line or import in Python code
 - **📁 File Processing**: Process SQL files in batch
-- **🧪 Comprehensive Tests**: 75+ tests with full coverage
+- **🧪 Comprehensive Tests**: 73 passing tests with pytest
 
 ## 📦 Installation
 
@@ -26,6 +26,9 @@ uv sync
 
 # Or using pip
 pip install -e .
+
+# After installation, the sql-anonymizer command will be available
+sql-anonymizer --help
 ```
 
 ## 🚀 Quick Start
@@ -34,18 +37,18 @@ pip install -e .
 
 ```bash
 # Anonymize a SQL query
-python -m src.sql_query_anonymizer.cli anonymize "SELECT name, email FROM users WHERE age > 25"
+sql-anonymizer anonymize "SELECT name, email FROM users WHERE age > 25"
 # Output: SELECT identifier_1 , identifier_2 FROM table_1 WHERE identifier_3 > literal_1
 
 # De-anonymize back to original
-python -m src.sql_query_anonymizer.cli deanonymize "SELECT identifier_1 , identifier_2 FROM table_1 WHERE identifier_3 > literal_1"
+sql-anonymizer deanonymize "SELECT identifier_1 , identifier_2 FROM table_1 WHERE identifier_3 > literal_1"
 # Output: SELECT name , email FROM users WHERE age > 25
 
 # Show current mappings
-python -m src.sql_query_anonymizer.cli show-mappings
+sql-anonymizer show-mappings
 
 # Process SQL files
-python -m src.sql_query_anonymizer.cli anonymize -f input.sql -o anonymized.sql
+sql-anonymizer anonymize -f input.sql -o anonymized.sql
 ```
 
 ### Python API
@@ -53,7 +56,7 @@ python -m src.sql_query_anonymizer.cli anonymize -f input.sql -o anonymized.sql
 ```python
 from src.sql_query_anonymizer.utils import Anonymizer
 
-# Create an anonymizer instance
+# Create an anonymizer instance with default mapping file
 anonymizer = Anonymizer()
 
 # Anonymize a query
@@ -61,16 +64,21 @@ original = "SELECT customer_id, name FROM customers WHERE age > 30"
 anonymized = anonymizer.anonymize_query(original)
 print(anonymized)  # SELECT identifier_1 , identifier_2 FROM table_1 WHERE identifier_3 > literal_1
 
+# Save mappings to persist for later
+anonymizer.save()
+
+# Later session - create new anonymizer and load mappings
+anonymizer2 = Anonymizer()
+anonymizer2.load()
+
 # De-anonymize back to original
-restored = anonymizer.de_anonymize_query(anonymized)
+restored = anonymizer2.de_anonymize_query(anonymized)
 print(restored)  # SELECT customer_id , name FROM customers WHERE age > 30
 
-# Get mapping statistics
-stats = anonymizer.get_mapping_stats()
-print(f"Total mappings: {stats['total_mappings']}")
-
-# Serialize for later use
-serialized = anonymizer.serialize_anonymized_query(anonymized)
+# Or use context manager for automatic save/load
+with Anonymizer() as anon:
+    anonymized = anon.anonymize_query(original)
+    # Mappings automatically saved on exit
 ```
 
 ## 📁 Project Structure
@@ -92,11 +100,10 @@ sql-query-anonymizer/
 │   ├── test_tokenize.py          # Tokenization tests
 │   └── test_utils.py             # Core utilities tests
 ├── data/
-│   ├── _raw/                    # Sample raw SQL files
-│   ├── _anonymized/             # Anonymized outputs
-│   ├── _optimized/              # Optimized queries
-│   └── _deanonymized/           # De-anonymized outputs
-├── CLI_USAGE.md                  # Detailed CLI documentation
+│   ├── 0_raw/                    # Sample raw SQL files
+│   ├── 1_anonymized/             # Anonymized outputs
+│   ├── 2_optimized/              # Optimized queries
+│   └── 3_deanonymized/           # De-anonymized outputs
 ├── pyproject.toml                # Project configuration
 ├── README.md
 └── LICENSE
@@ -118,19 +125,35 @@ sql-query-anonymizer/
 | `deanonymize` | De-anonymize query back to original form |
 | `show-mappings` | Display current mapping statistics |
 | `clear-mappings` | Clear all stored mappings |
-| `export-mappings` | Export mappings to a file |
-| `import-mappings` | Import mappings from a file |
+| `export-mappings` | Export mappings to another pickle file |
+| `import-mappings` | Import mappings from a pickle file |
 | `interactive` | Start interactive mode |
 
-See [CLI_USAGE.md](CLI_USAGE.md) for detailed command documentation.
+**Examples:**
+```bash
+# Anonymize a query
+sql-anonymizer anonymize "SELECT * FROM users"
+
+# Show current mappings
+sql-anonymizer show-mappings
+
+# Export mappings for backup
+sql-anonymizer export-mappings backup.pkl
+
+# Use custom mapping file
+sql-anonymizer -m custom.pkl anonymize "SELECT * FROM products"
+```
 
 ## 💾 Persistent Storage
 
-Mappings are automatically saved to `~/.sql_anonymizer/mappings.json` and persist across sessions. This ensures:
+Mappings are stored as pickle files in `~/.sql_anonymizer/mappings.pkl` and persist across sessions. This ensures:
 
-- Consistent anonymization of the same identifiers
-- Ability to de-anonymize queries processed in previous sessions
-- Backup and restore capabilities via export/import
+- **Consistent anonymization**: Same identifiers always map to the same placeholders
+- **Session persistence**: Mappings survive between CLI sessions
+- **Backup and restore**: Export/import mappings as needed
+- **Context manager support**: Automatic save/load using Python's `with` statement
+
+The pickle format stores mappings, reverse mappings, and counters efficiently.
 
 ## 🧪 Testing
 
@@ -183,28 +206,36 @@ GROUP BY c.identifier_1 , c.identifier_2 , o.identifier_3 ;
 
 ## 🛠️ Configuration
 
-Custom mapping file location:
-
+**Custom mapping file location:**
 ```bash
-python -m src.sql_query_anonymizer.cli --mapping-file custom_mappings.json anonymize "SELECT * FROM users"
+sql-anonymizer -m custom_mappings.pkl anonymize "SELECT * FROM users"
 ```
 
-Disable auto-save:
-
+**Disable auto-save:**
 ```bash
-python -m src.sql_query_anonymizer.cli --no-auto-save anonymize "SELECT * FROM users"
+sql-anonymizer --no-auto-save anonymize "SELECT * FROM users"
+```
+
+**Python API with custom location:**
+```python
+# Use custom mapping file
+anonymizer = Anonymizer(mapping_file="project_mappings.pkl")
+anonymizer.load()  # Load existing mappings
+
+# Or use absolute path
+anonymizer = Anonymizer(mapping_file="/path/to/mappings.pkl")
 ```
 
 ## 🔍 Feature Status
 
 ### ✅ Completed
 - [x] Core anonymization/de-anonymization engine
-- [x] Persistent mapping storage
-- [x] Command-line interface
+- [x] Pickle-based persistent mapping storage
+- [x] Context manager support (`with` statement)
+- [x] Command-line interface with multiple commands
 - [x] File processing capabilities
 - [x] Table alias detection and quantification
-- [x] Comprehensive test suite (75 tests)
-- [x] Interactive mode
+- [x] Comprehensive test suite (73 passing tests)
 - [x] Export/import functionality
 
 ### 🚧 Future Enhancements
