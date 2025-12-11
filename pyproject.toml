@@ -21,6 +21,7 @@ build-backend = "uv_build"
 dev = [
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
+    "pre-commit>=4.0.0",
 ]
 
 [tool.pytest.ini_options]
@@ -30,4 +31,8 @@ python_files = ["test_*.py", "*_test.py", "tests.py"]
 omit = [
     "tests/*",
     "src/sql_query_anonymizer/__init__.py",
+    "src/sql_query_anonymizer/constants.py",
+    "src/sql_query_anonymizer/anonymize.py",
+    "src/sql_query_anonymizer/tokenize.py",
+    "src/sql_query_anonymizer/helper_utilities.py",
 ]

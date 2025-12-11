@@ -330,6 +330,7 @@ def test_anonymizer_class(
     #     "literal": 1,
     # }
 
+
 def test_read_sql_file():
     sql_content = read_sql_file("./data/_raw/messy_sql_1.sql")
     assert "-- This is a comment" not in sql_content

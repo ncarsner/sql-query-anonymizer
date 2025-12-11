@@ -35,7 +35,7 @@ sql-anonymizer [GLOBAL_OPTIONS] COMMAND [COMMAND_OPTIONS]
 ### Global Options
 - `-m, --mapping-file PATH`: Use custom mapping file (must be `.pkl` file)
 - `--no-auto-save`: Disable automatic saving of mappings
-- `-v, --verbose`: Enable verbose output  
+- `-v, --verbose`: Enable verbose output
 - `-h, --help`: Show help information
 
 ## Commands
@@ -112,7 +112,7 @@ sql-anonymizer anonymize "SELECT c.name, o.total FROM customers c JOIN orders o 
 # Check what mappings were created
 sql-anonymizer show-mappings
 
-# De-anonymize the result  
+# De-anonymize the result
 sql-anonymizer deanonymize "SELECT c.identifier_1 , o.identifier_2 FROM table_1 c JOIN table_2 o ON c.identifier_3 = o.identifier_4"
 # Output: SELECT c.name , o.total FROM customers c JOIN orders o ON c.id = o.customer_id
 ```

@@ -1,7 +1,11 @@
 import pytest
-import json
 
-from src.sql_query_anonymizer.utils import Anonymizer, TokenType, postprocess_text, preprocess_text
+from src.sql_query_anonymizer.utils import (
+    Anonymizer,
+    TokenType,
+    postprocess_text,
+    preprocess_text,
+)
 
 
 @pytest.fixture
@@ -103,46 +107,48 @@ class TestSerialization:
         original_query = "SELECT c.name FROM customers c WHERE c.id = 1"
         processed_query = preprocess_text(original_query)
         anonymized_query = anonymizer.anonymize_query(processed_query)
-        
+
         # Save mappings using the new pickle-based approach
         serialization_file = tmp_path / "test_serialization.pkl"
         anonymizer.mapping_file = serialization_file
         anonymizer.save()
-        
+
         # Verify file exists
         assert serialization_file.exists()
-        
+
         # Verify we can load and use the mappings
         new_anonymizer = Anonymizer(mapping_file=str(serialization_file))
         new_anonymizer.load()
-        
+
         # Test that loaded anonymizer has the same mappings
         assert len(new_anonymizer.mappings) > 0
         assert len(new_anonymizer.reverse_mappings) > 0
-        
+
         # Verify de-anonymization works with loaded mappings
         decoded = new_anonymizer.de_anonymize_query(anonymized_query)
         assert "name" in decoded.lower() or "customers" in decoded.lower()
 
     def test_deserialize_and_decode(self, anonymizer, tmp_path):
         """Test deserialization and decoding functionality using pickle."""
-        original_query = "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id"
+        original_query = (
+            "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id"
+        )
         processed_query = preprocess_text(original_query)
         anonymized_query = anonymizer.anonymize_query(processed_query)
-        
+
         # Save mappings
         serialization_file = tmp_path / "test_deserialize.pkl"
         anonymizer.mapping_file = serialization_file
         anonymizer.save()
-        
+
         # Create new anonymizer and load mappings
         new_anonymizer = Anonymizer(mapping_file=str(serialization_file))
         new_anonymizer.load()
-        
+
         # Test that mappings were loaded
         assert len(new_anonymizer.mappings) > 0
         assert len(new_anonymizer.reverse_mappings) > 0
-        
+
         # Test decoding functionality
         decoded_query = new_anonymizer.de_anonymize_query(anonymized_query)
         original_normalized = " ".join(processed_query.split())
@@ -153,13 +159,13 @@ class TestSerialization:
         original_query = "SELECT name FROM users WHERE active = 1"
         processed_query = preprocess_text(original_query)
         anonymized_query = anonymizer.anonymize_query(processed_query)
-        
+
         # Simulate optimization (add hints)
         optimized_anonymized = anonymized_query.replace("SELECT", "SELECT /*+ INDEX */")
-        
+
         # Process optimized query
         decoded_optimized = anonymizer.process_optimized_query(optimized_anonymized)
-        
+
         # Should contain original identifiers and optimization hints
         assert "name" in decoded_optimized
         assert "users" in decoded_optimized
@@ -169,9 +175,9 @@ class TestSerialization:
         """Test quantification of table aliases that precede periods."""
         query = "SELECT c.name, c.email, o.total FROM customers c JOIN orders o ON c.id = o.customer_id"
         processed_query = preprocess_text(query)
-        
+
         alias_info = anonymizer.get_table_aliases_quantification(processed_query)
-        
+
         # Should detect aliases 'c' and 'o'
         assert alias_info["aliases_count"] == 2
         assert "c" in alias_info["aliases"]
@@ -185,22 +191,22 @@ class TestSerialization:
         original_query = "SELECT p.name, c.title FROM products p JOIN categories c ON p.category_id = c.id"
         processed_query = preprocess_text(original_query)
         anonymized_query = anonymizer.anonymize_query(processed_query)
-        
+
         # Save mappings
         serialization_file = tmp_path / "roundtrip_test.pkl"
         anonymizer.mapping_file = serialization_file
         anonymizer.save()
-        
+
         # Simulate query optimization
         optimized_anonymized = anonymized_query.replace(
             "SELECT", "SELECT /*+ USE_HASH_JOIN */"
         )
-        
+
         # Load mappings and decode optimized query
         new_anonymizer = Anonymizer(mapping_file=str(serialization_file))
         new_anonymizer.load()
         final_decoded = new_anonymizer.de_anonymize_query(optimized_anonymized)
-        
+
         # Should contain original identifiers and optimization hints
         assert "name" in final_decoded or "products" in final_decoded
         assert "USE_HASH_JOIN" in final_decoded  # The comment content should be there
@@ -212,11 +218,13 @@ class TestEdgeCases:
     def test_anonymizer_prefix_invalid_token_type(self):
         """Test that _prefix method raises ValueError for unsupported token types."""
         anonymizer = Anonymizer()
-        
+
         with pytest.raises(ValueError, match="Unsupported token type"):
             anonymizer._prefix(TokenType.KEYWORD)
 
-@pytest.mark.parametrize("query, expected_output",
+
+@pytest.mark.parametrize(
+    "query, expected_output",
     [
         (
             "SELECT *, (SELECT COUNT(*) FROM orders o2 WHERE o2.customer_id = c.id) as order_count, (SELECT MAX(total_amount) FROM orders o3 WHERE o3.customer_id = c.id) as max_order FROM customers c WHERE c.status = 'active' AND c.created_date > '2020-01-01' AND c.id IN (SELECT DISTINCT customer_id FROM orders WHERE order_date >= '2023-01-01') AND EXISTS (SELECT 'X' FROM customer_preferences cp WHERE cp.customer_id = c.id AND cp.email_marketing = 'yes') ORDER BY c.last_name, c.first_name LIMIT 1000;",
