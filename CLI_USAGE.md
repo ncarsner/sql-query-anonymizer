@@ -204,7 +204,7 @@ sql-anonymizer deanonymize -f optimized_anonymized.sql -o final_optimized_query.
 - Ensure the directory exists and is writable
 - Use absolute paths for mapping files
 - Verify the file is a valid pickle file (`.pkl` extension)
-- Pickle files are Python version-specific; regenerate if needed
+- Pickle files are Python version-specific and should be regenerated if switching Python versions
 
 ## Performance Tips
 
