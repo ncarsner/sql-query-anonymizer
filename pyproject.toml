@@ -1,6 +1,6 @@
 [project]
 name = "sql-query-anonymizer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tool for anonymizing schema data in SQL queries."
 readme = "README.md"
 authors = [

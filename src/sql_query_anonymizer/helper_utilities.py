@@ -29,7 +29,7 @@ def read_sql_file(filepath: str) -> str:
 
 if __name__ == "__main__":
     # Import only when running as a script to avoid circular import
-    from src.sql_query_anonymizer.utils import Anonymizer
+    from .utils import Anonymizer
 
     # Read the SQL files
     test_query = read_sql_file("./data/_raw/messy_sql_1.sql")
