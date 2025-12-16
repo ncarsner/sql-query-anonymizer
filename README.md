@@ -85,6 +85,10 @@ with Anonymizer() as anon:
 
 ```
 sql-query-anonymizer/
+├── .github/
+│   └── workflows/
+│       ├── publish.yml           # Automated PyPI publishing
+│       └── tests.yml             # CI/CD testing
 ├── src/
 │   └── sql_query_anonymizer/
 │       ├── __init__.py
@@ -95,16 +99,19 @@ sql-query-anonymizer/
 │       ├── tokenize.py           # SQL tokenization engine
 │       └── utils.py              # Core Anonymizer class
 ├── tests/
+│   ├── __init__.py
 │   ├── test_anonymize.py         # Anonymization tests
 │   ├── test_cli.py               # CLI tests
-│   ├── test_tokenize.py          # Tokenization tests
 │   └── test_utils.py             # Core utilities tests
 ├── data/
-│   ├── 0_raw/                    # Sample raw SQL files
-│   ├── 1_anonymized/             # Anonymized outputs
-│   ├── 2_optimized/              # Optimized queries
-│   └── 3_deanonymized/           # De-anonymized outputs
+│   ├── _raw/                     # Sample raw SQL files
+│   ├── _anonymized/              # Anonymized outputs
+│   ├── _optimized/               # Optimized queries
+│   └── _deanonymized/            # De-anonymized outputs
+├── .pre-commit-config.yaml       # Pre-commit hooks configuration
+├── CLI_USAGE.md                  # CLI quick reference
 ├── pyproject.toml                # Project configuration
+├── uv.lock                       # Dependency lock file
 ├── README.md
 └── LICENSE
 ```
